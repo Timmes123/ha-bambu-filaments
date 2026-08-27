@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --card-background-color: #1c2027;
+    --primary-text-color: #e3e5ea;
+    --secondary-text-color: #9aa1ad;
+    --divider-color: rgba(255,255,255,.12);
+    --secondary-background-color: #2b313c;
+    --error-color: #f2545b;
+    --disabled-text-color: #6d7482;
+    --mdc-icon-size: 24px;
+  }
+  body { background: #10131a; margin: 0; padding: 24px;
+         font-family: "Segoe UI", Roboto, sans-serif; color: var(--primary-text-color); }
+  .wrap { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .shot { width: 430px; }
+  .shot.wide { width: 520px; }
+</style>
+<script>
+  // Minimal stand-ins for HA's ha-card / ha-icon so the card renders 1:1.
+  class HaCard extends HTMLElement {
+    connectedCallback() {
+      this.style.display = "block";
+      this.style.background = "var(--card-background-color)";
+      this.style.borderRadius = "14px";
+      this.style.border = "1px solid rgba(255,255,255,.06)";
+      this.style.boxShadow = "0 2px 6px rgba(0,0,0,.35)";
+    }
+  }
+  customElements.define("ha-card", HaCard);
+
+  const MDI = {
+    "mdi:chevron-down": "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,15.41L6,9.41L7.41,8.58Z",
+    "mdi:chevron-right": "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z",
+    "mdi:delete-outline": "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
+    "mdi:plus": "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z",
+  };
+  class HaIcon extends HTMLElement {
+    connectedCallback() { this._draw(); }
+    static get observedAttributes() { return ["icon"]; }
+    attributeChangedCallback() { this._draw(); }
+    _draw() {
+      const p = MDI[this.getAttribute("icon")] || "";
+      const size = "var(--mdc-icon-size, 24px)";
+      this.style.display = "inline-flex";
+      this.innerHTML = `<svg viewBox="0 0 24 24" style="width:${size};height:${size};fill:currentColor"><path d="${p}"/></svg>`;
+    }
+  }
+  customElements.define("ha-icon", HaIcon);
+</script>
+<script src="bambu-filaments-card.js"></script>
+</head>
+<body>
+<div class="wrap" id="wrap"></div>
+<script>
+  const S = (id, vendor, material, name, fid, color, colorName, code, remaining, total, opts = {}) => ({
+    spool_id: id, vendor, material, name, filament_id: fid,
+    color, colors: [color], color_name: colorName, bambu_color_code: code,
+    remaining_g: remaining, total_g: total, status: 0, note: opts.note || "",
+    tray_id_name: "", create_type: "ams",
+    in_printer: !!opts.loc, device_name: opts.loc || null,
+    ams_id: 0, slot_id: opts.slot ?? "", ...opts.extra,
+  });
+
+  const spools = [
+    S(1, "Bambu Lab", "PETG", "PETG HF", "GFG02", "#000000FF", "Black", "33102", 200, 1000, { loc: "A1 Mini", slot: 1 }),
+    S(2, "Bambu Lab", "PETG", "PETG HF", "GFG02", "#000000FF", "Black", "33102", 170, 1000),
+    S(3, "Bambu Lab", "PETG", "PETG HF", "GFG02", "#F9DFB9FF", "Cream", "33401", 475, 1000),
+    S(4, "Bambu Lab", "PETG", "PETG HF", "GFG02", "#39541AFF", "Forest Green", "33502", 1000, 1000, { loc: "A2L", slot: 2 }),
+    S(5, "Bambu Lab", "PETG", "PETG HF", "GFG02", "#FFFFFFFF", "White", "33100", 0, 1000),
+    S(10, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#688197FF", "Misty Blue", "30108", 930, 1000, { loc: "A2L", slot: 3 }),
+    S(11, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#688197FF", "Misty Blue", "30108", 80, 1000),
+    S(12, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#688197FF", "Misty Blue", "30108", 1000, 1000),
+    S(13, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#688197FF", "Misty Blue", "30108", 1000, 1000),
+    S(14, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#688197FF", "Misty Blue", "30108", 0, 1000),
+    S(15, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#7F7E83FF", "Gray", "30107", 1000, 1000),
+    S(16, "Bambu Lab", "PETG", "PETG Basic", "GFG00", "#4F2C1DFF", "Dark Brown", "30800", 1000, 1000),
+    S(20, "Bambu Lab", "PLA", "PLA Matte", "GFA01", "#000000FF", "Charcoal", "11102", 920, 1000, { loc: "A1 Mini", slot: 2 }),
+    S(21, "Bambu Lab", "PLA", "PLA Matte", "GFA01", "#EDE4D8FF", "Ivory White", "11100", 680, 1000),
+    S(22, "Bambu Lab", "PLA", "PLA Matte", "GFA01", "#950051FF", "Plum", "11500", 931, 1000),
+    S(23, "Bambu Lab", "PLA", "PLA Matte", "GFA01", "#0078BFFF", "Marine Blue", "11600", 1000, 1000),
+    S(30, "Bambu Lab", "PLA", "PLA Silk+", "GFA05", "#F4A925FF", "Gold", "13405", 870, 1000),
+    S(31, "Bambu Lab", "PLA", "PLA Silk+", "GFA05", "#C8C8C8FF", "Silver", "13402", 130, 1000),
+    S(40, "Bambu Lab", "PLA", "PLA Basic", "GFA00", "#000000FF", "Black", "10101", 980, 1000),
+    S(41, "Bambu Lab", "PLA", "PLA Basic", "GFA00", "#FFFFFFFF", "Jade White", "10100", 1000, 1000),
+    S(42, "Bambu Lab", "PLA", "PLA Basic", "GFA00", "#EC008CFF", "Magenta", "10202", 1000, 1000),
+  ];
+
+  const byMat = {};
+  for (const s of spools) byMat[s.material] = (byMat[s.material] || 0) + s.remaining_g;
+
+  const hass = {
+    locale: { language: "en" },
+    states: {
+      "sensor.bambu_filament_library_spools": {
+        last_updated: "2026-08-27T12:00:00Z",
+        attributes: { spools, remaining_g_by_material: byMat },
+      },
+    },
+    entities: { "sensor.bambu_filament_library_spools": { platform: "bambu_filaments" } },
+    callService: (domain, service, data, target, notify, returnResponse) => {
+      if (service === "get_catalog") {
+        return Promise.resolve({ response: { filaments: [
+          { vendor: "Bambu Lab", material: "PLA", name: "PLA Basic", filament_id: "GFA00" },
+          { vendor: "Bambu Lab", material: "PLA", name: "PLA Matte", filament_id: "GFA01" },
+          { vendor: "Bambu Lab", material: "PETG", name: "PETG HF", filament_id: "GFG02" },
+          { vendor: "Generic", material: "PLA", name: "PLA", filament_id: "GFL99" },
+          { vendor: "Generic", material: "PETG", name: "PETG", filament_id: "GFG99" },
+          { vendor: "SUNLU", material: "PLA", name: "PLA+ 2.0", filament_id: "GFL55" },
+        ] } });
+      }
+      return Promise.resolve({});
+    },
+  };
+
+  const CONFIGS = [
+    { id: "overview", cls: "shot wide", config: { title: "Filament" } },
+    { id: "combine", cls: "shot", config: { title: "Filament", combine: true, group_by: "line", show_add: false } },
+    { id: "low-stock", cls: "shot", config: {
+      title: "Low stock", group_by: "none", combine: true, sort: "remaining_asc",
+      max_remaining_g: 500, compact: true, show_add: false } },
+    { id: "loaded", cls: "shot", config: {
+      title: "Loaded right now", group_by: "none", only_in_printer: true, show_delete: true, show_add: false } },
+  ];
+
+  for (const { id, cls, config } of CONFIGS) {
+    const holder = document.createElement("div");
+    holder.className = cls;
+    holder.id = `shot-${id}`;
+    const card = document.createElement("bambu-filaments-card");
+    card.setConfig(config);
+    card.hass = hass;
+    holder.appendChild(card);
+    document.getElementById("wrap").appendChild(holder);
+  }
+
+  // Editor shot
+  const eh = document.createElement("div");
+  eh.className = "shot";
+  eh.id = "shot-editor";
+  eh.style.background = "var(--card-background-color)";
+  eh.style.borderRadius = "14px";
+  eh.style.padding = "14px";
+  eh.style.border = "1px solid rgba(255,255,255,.06)";
+  const editor = document.createElement("bambu-filaments-card-editor");
+  editor.hass = hass;
+  editor.setConfig({ title: "Low stock", combine: true, max_remaining_g: 500 });
+  eh.appendChild(editor);
+  document.getElementById("wrap").appendChild(eh);
+
+  // collapse one group in the combine card for visual variety
+  setTimeout(() => {
+    const c = document.querySelector("#shot-combine bambu-filaments-card");
+    const gh = c?.shadowRoot?.querySelector('.ghead[data-group="Bambu Lab PLA Basic"]');
+    gh?.click();
+    document.title = "ready";
+  }, 300);
+</script>
+</body>
+</html>
