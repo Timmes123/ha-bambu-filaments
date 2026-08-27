@@ -7,3 +7,6 @@ venv/
 tools/.bambu_token.json
 *.token.json
 .env
+
+# Release asset build artifact
+bambu_filaments.zip
