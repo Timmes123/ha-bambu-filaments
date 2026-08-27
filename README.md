@@ -28,9 +28,14 @@ This integration is about your **account-level spool inventory**. It complements
 
 ## Installation (HACS)
 
-1. In HACS, choose *Custom repositories* and add `https://github.com/Timmes123/ha-bambu-filaments` as an **Integration**.
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Timmes123&repository=ha-bambu-filaments&category=integration)
+
+1. Click the badge above (or add `https://github.com/Timmes123/ha-bambu-filaments` manually in HACS under *Custom repositories* as an **Integration**).
 2. Install **Bambu Filaments** and restart Home Assistant.
-3. Go to *Settings → Devices & services → Add integration* and search for **Bambu Filaments**.
+3. Set up the integration:
+
+   [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=bambu_filaments)
+
 4. Sign in with your Bambu Lab account (region, email, password). If Bambu sends you a verification code by email, enter it when prompted.
 
 ## Devices & entities
