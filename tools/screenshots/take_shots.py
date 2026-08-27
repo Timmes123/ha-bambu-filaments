@@ -33,6 +33,9 @@ with sync_playwright() as pw:
     page.goto((HERE / "harness.html").as_uri())
     page.wait_for_function("document.title === 'ready'")
     page.wait_for_timeout(200)
+    # expand one combined stack so the combine shot shows the child rows
+    page.locator("#shot-combine .row[data-key]").first.click()
+    page.wait_for_timeout(200)
     for shot in SHOTS:
         page.locator(f"#shot-{shot}").screenshot(path=str(OUT / f"card-{shot}.png"))
         print("saved", f"card-{shot}.png")

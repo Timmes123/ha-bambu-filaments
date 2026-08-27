@@ -101,7 +101,7 @@ type: custom:bambu-filaments-card
 
 ### Examples
 
-**Full library**, grouped by filament line with per-group totals. `combine: true` merges identical spools into one ×n row with summed remaining weight:
+**Full library**, grouped by filament line with per-group totals. `combine: true` merges identical spools into one ×n row with summed remaining weight — click the row to expand the individual spools (emptiest first, each editable):
 
 ```yaml
 type: custom:bambu-filaments-card
@@ -139,6 +139,10 @@ only_in_printer: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="340" alt="In-card dialog for adding a new spool"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-custom.png" width="340" alt="Custom third-party brand mode of the add dialog">
 
+The result in Bambu Studio: the third-party spool appears in the AMS filament picker **under its own brand** and is assignable with the linked profile's print settings — something even Bambu's own apps can't do for custom brands:
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/studio-assign.png" width="700" alt="Bambu Studio AMS dialog listing the custom Flashforge spool under its own brand">
+
 **Editing spools** — every row has a cog icon (toggleable via `show_edit`) that opens the same dialog prefilled with the spool's data: rename, change brand/material/product, pick another color, correct the weights, edit the note, or link/unlink a slicer profile. Only the fields you actually change are written to the cloud. Deleting the spool from the cloud library also lives in this dialog (with confirmation):
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-edit-dialog.png" width="340" alt="In-card dialog for editing an existing spool">
@@ -155,7 +159,7 @@ Everything is also configurable in the **visual editor**, including material fil
 | `title` | "Filament" | Card title ("" hides the header) |
 | `group_by` | `line` | `line` (brand + product), `product` (product line across all brands, e.g. one "PLA Matte" group), `material`, or `none` |
 | `sort` | `name` | `name`, `remaining_asc`, `remaining_desc` |
-| `combine` | `false` | Merge identical spools (same vendor/product/color) into one ×n row with summed remaining — a color with enough backup spools then no longer counts as low |
+| `combine` | `false` | Merge identical spools (same vendor/product/color) into one ×n row with summed remaining — a color with enough backup spools then no longer counts as low. Clicking a ×n row expands the individual spools, each with its own edit icon |
 | `max_remaining_g` | – | Filter: only show entries with at most this many grams left |
 | `max_remaining_pct` | – | Filter: only show entries at or below this remaining % |
 | `materials` | – | Filter: list of materials to include (e.g. `[PLA, PETG]`) |

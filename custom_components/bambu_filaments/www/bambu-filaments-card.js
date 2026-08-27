@@ -185,6 +185,7 @@ class BambuFilamentsCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._collapsed = new Set();
+    this._expandedStacks = new Set();
     this._lastRenderKey = null;
   }
 
@@ -233,22 +234,6 @@ class BambuFilamentsCard extends HTMLElement {
     return 6;
   }
 
-  _spoolEntityId(spoolId) {
-    // Cache the spool_id -> remaining-sensor map per state generation.
-    if (!this._entityMap || this._entityMapKey !== this._lastRenderKey) {
-      this._entityMap = {};
-      this._entityMapKey = this._lastRenderKey;
-      for (const [id, st] of Object.entries(this._hass.states)) {
-        if (!id.startsWith("sensor.")) continue;
-        const ent = this._hass.entities?.[id];
-        if (ent && ent.platform !== "bambu_filaments") continue;
-        const sid = st.attributes?.spool_id;
-        if (sid != null && st.attributes?.remaining_g !== undefined) this._entityMap[sid] = id;
-      }
-    }
-    return this._entityMap[spoolId];
-  }
-
   _visibleSpools(st) {
     const c = this._config;
     let spools = (st.attributes.spools || []).slice();
@@ -282,12 +267,15 @@ class BambuFilamentsCard extends HTMLElement {
         ...colors.map(normHex).sort()].join("|");
       const agg = map.get(key);
       if (!agg) {
-        map.set(key, { ...s, _count: 1, _locations: [] });
+        // _spools keeps the original spool objects so an expanded stack can
+        // render (and edit) each physical spool individually.
+        map.set(key, { ...s, _count: 1, _locations: [], _key: key, _spools: [s] });
       } else {
         agg._count += 1;
         agg.remaining_g = (agg.remaining_g || 0) + (s.remaining_g || 0);
         agg.total_g = (agg.total_g || 0) + (s.total_g || 0);
         agg.in_printer = agg.in_printer || s.in_printer;
+        agg._spools.push(s);
       }
       const rec = map.get(key);
       if (s.in_printer && s.device_name) {
@@ -332,7 +320,7 @@ class BambuFilamentsCard extends HTMLElement {
       body = this._groups(spools).map(([gname, items]) => {
         const gTotal = items.reduce((a, s) => a + (s.remaining_g || 0), 0);
         const collapsed = gname && this._collapsed.has(gname);
-        const rows = collapsed ? "" : items.map((s) => this._row(s, t)).join("");
+        const rows = collapsed ? "" : items.map((s) => this._stack(s, t)).join("");
         const header = gname === null ? "" : `
           <div class="ghead" data-group="${esc(gname)}">
             <ha-icon icon="mdi:chevron-${collapsed ? "right" : "down"}"></ha-icon>
@@ -368,20 +356,33 @@ class BambuFilamentsCard extends HTMLElement {
         this._render(st);
       })
     );
-    this.shadowRoot.querySelectorAll(".row").forEach((el) =>
+    // A combined ×n row expands/collapses its individual spools on click
+    // (single rows are inert - editing goes through the cog icon).
+    this.shadowRoot.querySelectorAll(".row[data-key]").forEach((el) =>
       el.addEventListener("click", () => {
-        if (!el.dataset.spool) return; // combined rows have no single spool
-        const entityId = this._spoolEntityId(Number(el.dataset.spool));
-        if (!entityId) return;
-        this.dispatchEvent(new CustomEvent("hass-more-info", {
-          detail: { entityId }, bubbles: true, composed: true,
-        }));
+        const k = el.dataset.key;
+        this._expandedStacks.has(k)
+          ? this._expandedStacks.delete(k)
+          : this._expandedStacks.add(k);
+        this._configDirty = true;
+        this._render(st);
       })
     );
+    const findSpool = (id) => {
+      for (const s of spools) {
+        if (s._spools) {
+          const child = s._spools.find((x) => x.spool_id === id);
+          if (child) return child;
+        } else if (s.spool_id === id) {
+          return s;
+        }
+      }
+      return null;
+    };
     this.shadowRoot.querySelectorAll(".edit").forEach((el) =>
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const spool = spools.find((s) => s.spool_id === Number(el.dataset.spool));
+        const spool = findSpool(Number(el.dataset.spool));
         if (spool) this._openDialog(t, spool);
       })
     );
@@ -650,7 +651,22 @@ class BambuFilamentsCard extends HTMLElement {
     });
   }
 
-  _row(s, t) {
+  _stack(s, t) {
+    // A combined row plus, when expanded, one child row per physical spool
+    // (emptiest first) - each with its own cog icon.
+    const expanded = (s._count || 1) > 1 && this._expandedStacks.has(s._key);
+    let html = this._row(s, t, { expanded });
+    if (expanded) {
+      html += s._spools
+        .slice()
+        .sort((a, b) => (a.remaining_g ?? 0) - (b.remaining_g ?? 0))
+        .map((child) => this._row(child, t, { child: true }))
+        .join("");
+    }
+    return html;
+  }
+
+  _row(s, t, opts = {}) {
     const c = this._config;
     const pct = s.total_g ? Math.max(0, Math.min(100, Math.round((s.remaining_g ?? 0) / s.total_g * 100))) : 0;
     const barColor = (s.remaining_g ?? 0) <= 0 ? "var(--disabled-text-color, #9e9e9e)"
@@ -682,11 +698,15 @@ class BambuFilamentsCard extends HTMLElement {
     const edit = c.show_edit && !combined
       ? `<ha-icon class="edit" icon="mdi:cog-outline" data-spool="${s.spool_id}"></ha-icon>`
       : "";
+    const stackChip = combined
+      ? ` <span class="chip">×${s._count}</span><ha-icon class="schev" icon="mdi:chevron-${opts.expanded ? "up" : "down"}"></ha-icon>`
+      : "";
     return `
-      <div class="row ${c.compact ? "compact" : ""}" data-spool="${combined ? "" : s.spool_id}">
+      <div class="row ${c.compact ? "compact" : ""} ${opts.child ? "child" : ""}"
+           ${combined ? `data-key="${esc(s._key)}"` : ""} data-spool="${combined ? "" : s.spool_id}">
         <span class="swatch" style="${swatchStyle(s)}"></span>
         <div class="mid">
-          <div class="rname">${esc(titleLine)}${combined ? ` <span class="chip">×${s._count}</span>` : ""}</div>
+          <div class="rname">${esc(titleLine)}${stackChip}</div>
           ${meta.length && !c.compact ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
           <div class="barbg"><div class="bar" style="width:${pct}%;background:${barColor}"></div></div>
         </div>
@@ -713,9 +733,14 @@ class BambuFilamentsCard extends HTMLElement {
               font-size:0.8em; font-weight:400; }
       .gsum { margin-left:auto; color:var(--secondary-text-color); font-weight:400; font-size:0.9em; }
       .row { display:flex; align-items:center; gap:12px; padding:8px 0;
-             border-bottom:1px solid var(--divider-color); cursor:pointer; }
+             border-bottom:1px solid var(--divider-color); }
+      .row[data-key] { cursor:pointer; }
       .row:last-child { border-bottom:none; }
       .row.compact { padding:4px 0; gap:8px; }
+      .row.child { padding-left:46px; }
+      .row.compact.child { padding-left:30px; }
+      .row.child .swatch { width:26px; height:26px; border-radius:6px; }
+      .schev { --mdc-icon-size:16px; color:var(--secondary-text-color); vertical-align:middle; }
       .swatch { width:34px; height:34px; border-radius:8px; flex:none;
                 border:1px solid var(--divider-color); }
       .compact .swatch { width:22px; height:22px; border-radius:6px; }
