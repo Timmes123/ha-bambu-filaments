@@ -173,9 +173,14 @@ class BambuFilamentsCard extends HTMLElement {
     this._lastRenderKey = null;
   }
 
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    this._dialogHost?.remove();
+    this._dialogHost = null;
+  }
+
   set hass(hass) {
     this._hass = hass;
-    if (this._dialogOpen) return; // don't wipe the form mid-typing
     const entityId = this._config?.entity || findSpoolsEntity(hass);
     const st = entityId ? hass.states[entityId] : null;
     const key = st ? `${entityId}|${st.last_updated}` : "none";
@@ -306,14 +311,11 @@ class BambuFilamentsCard extends HTMLElement {
         </div>` : ""}
         <div class="list" ${scroll}>${body}</div>
         ${c.show_add ? `<div class="addrow"><ha-icon icon="mdi:plus"></ha-icon><span>${t.add_btn}</span></div>` : ""}
-        ${this._dialogOpen ? this._dialogHtml(t, spools) : ""}
       </ha-card>${this._css()}`;
 
     this.shadowRoot.querySelector(".addrow")?.addEventListener("click", () => {
-      this._dialogOpen = true;
-      this._render(this._lastState);
+      this._openDialog(t, spools);
     });
-    if (this._dialogOpen) this._wireDialog(t);
 
     this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
       el.addEventListener("click", () => {
@@ -345,14 +347,53 @@ class BambuFilamentsCard extends HTMLElement {
     );
   }
 
-  _dialogHtml(t, spools) {
+  _openDialog(t, spools) {
+    if (this._dialogHost) return;
     const vendors = [...new Set(["Bambu Lab", ...spools.map((s) => s.vendor).filter(Boolean)])];
     const materials = [...new Set([
       ...spools.map((s) => s.material).filter(Boolean),
       "PLA", "PETG", "ABS", "ASA", "TPU", "PC", "PA", "PVA", "PLA-CF", "PETG-CF",
     ])];
     const opts = (arr) => arr.map((v) => `<option value="${esc(v)}"></option>`).join("");
-    return `
+
+    // The dialog lives on document.body: HA's dashboard containers use CSS
+    // transforms, which turn position:fixed inside a card into card-relative
+    // positioning. On body it is always centered in the viewport.
+    const host = document.createElement("div");
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = `
+      <style>
+        .overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.55);
+                   display:flex; align-items:center; justify-content:center;
+                   font-family: var(--primary-font-family, Roboto, "Segoe UI", sans-serif);
+                   color: var(--primary-text-color, #e3e5ea); }
+        .dlg { background:var(--card-background-color, #1c2027);
+               border:1px solid var(--divider-color, rgba(255,255,255,.12));
+               border-radius:14px; padding:18px; width:min(340px, calc(100vw - 48px));
+               max-height: calc(100vh - 48px); overflow-y:auto;
+               display:flex; flex-direction:column; gap:10px;
+               box-shadow:0 8px 32px rgba(0,0,0,.5); }
+        .dtitle { font-size:1.1em; font-weight:600; }
+        label { display:flex; flex-direction:column; gap:3px; font-size:0.85em;
+                color:var(--secondary-text-color, #9aa1ad); min-width:0; }
+        input { box-sizing:border-box; width:100%; }
+        input[type=text], input[type=number] {
+          padding:7px 9px; border:1px solid var(--divider-color, rgba(255,255,255,.12));
+          border-radius:8px; background:var(--secondary-background-color, #2b313c);
+          color:var(--primary-text-color, #e3e5ea); font-size:1rem; }
+        input[type=color] { width:100%; height:38px; padding:2px; border-radius:8px;
+          border:1px solid var(--divider-color, rgba(255,255,255,.12));
+          background:var(--secondary-background-color, #2b313c); }
+        .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .derr { color:var(--error-color, #e74c3c); font-size:0.85em; }
+        .dbtns { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+        .dbtns button { padding:8px 14px; border-radius:8px; border:none; cursor:pointer;
+          font-size:0.95em; }
+        .dlg-cancel { background:var(--secondary-background-color, #2b313c);
+          color:var(--primary-text-color, #e3e5ea); }
+        .dlg-save { background:#00ae42; color:#fff; font-weight:600; }
+        .dlg-save:disabled { opacity:.6; }
+      </style>
       <div class="overlay">
         <div class="dlg">
           <div class="dtitle">${t.d_title}</div>
@@ -375,15 +416,13 @@ class BambuFilamentsCard extends HTMLElement {
           </div>
         </div>
       </div>`;
-  }
+    document.body.appendChild(host);
+    this._dialogHost = host;
 
-  _wireDialog(t) {
-    const root = this.shadowRoot;
     const overlay = root.querySelector(".overlay");
     const close = () => {
-      this._dialogOpen = false;
-      this._configDirty = true;
-      this._render(this._lastState);
+      host.remove();
+      this._dialogHost = null;
     };
     overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
     root.querySelector(".dlg-cancel").addEventListener("click", close);
@@ -503,31 +542,6 @@ class BambuFilamentsCard extends HTMLElement {
                 border-radius:8px; color:var(--secondary-text-color); cursor:pointer; }
       .addrow:hover { color:var(--primary-text-color); border-color:var(--secondary-text-color); }
       .addrow ha-icon { --mdc-icon-size:18px; }
-      .overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.55);
-                 display:flex; align-items:center; justify-content:center; }
-      .dlg { background:var(--card-background-color); border:1px solid var(--divider-color);
-             border-radius:14px; padding:18px; width:min(340px, calc(100vw - 48px));
-             display:flex; flex-direction:column; gap:10px; box-shadow:0 8px 32px rgba(0,0,0,.5); }
-      .dtitle { font-size:1.1em; font-weight:600; }
-      .dlg label { display:flex; flex-direction:column; gap:3px; font-size:0.85em;
-                   color:var(--secondary-text-color); }
-      .dlg label { min-width:0; }
-      .dlg input { box-sizing:border-box; width:100%; }
-      .dlg input[type=text], .dlg input[type=number] {
-        padding:7px 9px; border:1px solid var(--divider-color); border-radius:8px;
-        background:var(--secondary-background-color); color:var(--primary-text-color);
-        font-size:1rem; }
-      .dlg input[type=color] { width:100%; height:38px; padding:2px; border-radius:8px;
-        border:1px solid var(--divider-color); background:var(--secondary-background-color); }
-      .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-      .derr { color:var(--error-color, #e74c3c); font-size:0.85em; }
-      .dbtns { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
-      .dbtns button { padding:8px 14px; border-radius:8px; border:none; cursor:pointer;
-        font-size:0.95em; }
-      .dlg-cancel { background:var(--secondary-background-color);
-        color:var(--primary-text-color); }
-      .dlg-save { background:#00ae42; color:#fff; font-weight:600; }
-      .dlg-save:disabled { opacity:.6; }
     </style>`;
   }
 }
