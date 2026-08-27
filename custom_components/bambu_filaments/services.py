@@ -96,34 +96,45 @@ def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_create_spool(call: ServiceCall) -> None:
         coordinator = _first_coordinator()
-        color = normalize_hex(call.data["color"])
         total = call.data["total_g"]
+        # The create endpoint expects #RRGGBB without alpha (Studio MITM shape);
+        # manual entries omit RFID/trayIdName/rolls, and there is no `colors`,
+        # `note` or `status` field in the create body.
         payload: dict[str, Any] = {
             "createType": "manual",
             "filamentVendor": call.data["vendor"],
             "filamentType": call.data["material"],
             "filamentName": call.data["name"],
-            "color": color,
-            "colors": [color],
+            "color": normalize_hex(call.data["color"])[:7],
             "colorType": 2,
+            "isSupport": False,
             "netWeight": call.data.get("remaining_g", total),
             "totalNetWeight": total,
-            "note": "",
         }
         filament_id = call.data.get("filament_id")
         if not filament_id:
-            # Best effort: resolve the canonical filamentId from the catalog.
+            # Best effort: resolve the canonical filamentId from the catalog -
+            # exact name match first, then vendor + material type.
             try:
                 catalog = await hass.async_add_executor_job(
                     coordinator.client.get_catalog
                 )
-                for item in catalog.get("filamentSettings") or []:
+                settings = catalog.get("filamentSettings") or []
+                for item in settings:
                     if (
                         item.get("filamentVendor") == payload["filamentVendor"]
                         and item.get("filamentName") == payload["filamentName"]
                     ):
                         filament_id = item.get("filamentId")
                         break
+                else:
+                    for item in settings:
+                        if (
+                            item.get("filamentVendor") == payload["filamentVendor"]
+                            and item.get("filamentType") == payload["filamentType"]
+                        ):
+                            filament_id = item.get("filamentId")
+                            break
             except BambuCloudError:
                 filament_id = None
         if filament_id:

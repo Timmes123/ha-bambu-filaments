@@ -238,7 +238,9 @@ class TotalRemainingSensor(BambuFilamentsEntity, SensorEntity):
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}-spool-remaining"
+        # Must NOT start with "{entry_id}-spool-<int>" (stale-spool cleanup
+        # prefix) and must keep the pre-v0.3.0 value for registry continuity.
+        self._attr_unique_id = f"{entry.entry_id}-total-remaining"
 
     @property
     def native_value(self) -> int:
