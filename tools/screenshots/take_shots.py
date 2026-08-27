@@ -50,6 +50,13 @@ with sync_playwright() as pw:
     page.wait_for_timeout(100)
     page.locator(".dlg").screenshot(path=str(OUT / "card-add-custom.png"))
     print("saved card-add-custom.png")
+    # close it and open the edit dialog via a row's cog icon
+    page.locator(".dlg-cancel").click()
+    page.wait_for_timeout(100)
+    page.locator("#shot-overview .edit").first.click()
+    page.wait_for_timeout(200)
+    page.locator(".dlg").screenshot(path=str(OUT / "card-edit-dialog.png"))
+    print("saved card-edit-dialog.png")
     browser.close()
 (HERE / "bambu-filaments-card.js").unlink()
 print("done ->", OUT)

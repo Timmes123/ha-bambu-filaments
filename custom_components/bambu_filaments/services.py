@@ -20,6 +20,7 @@ from .coordinator import BambuFilamentsCoordinator
 SERVICE_SET_REMAINING = "set_remaining"
 SERVICE_SET_NOTE = "set_note"
 SERVICE_SET_FILAMENT_ID = "set_filament_id"
+SERVICE_UPDATE_SPOOL = "update_spool"
 SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
 SERVICE_GET_CATALOG = "get_catalog"
@@ -64,6 +65,33 @@ CREATE_SPOOL_SCHEMA = vol.Schema(
     }
 )
 DELETE_SPOOL_SCHEMA = vol.Schema({vol.Required("spool_id"): cv.positive_int})
+# Every field is optional (empty strings clear display_name/note/filament_id);
+# the handler requires at least one field besides spool_id.
+UPDATE_SPOOL_SCHEMA = vol.Schema(
+    {
+        vol.Required("spool_id"): cv.positive_int,
+        vol.Optional("vendor"): vol.All(cv.string, vol.Length(min=1)),
+        vol.Optional("material"): vol.All(cv.string, vol.Length(min=1)),
+        vol.Optional("name"): vol.All(cv.string, vol.Length(min=1)),
+        vol.Optional("color"): COLOR_SCHEMA,
+        vol.Optional("total_g"): vol.All(vol.Coerce(int), vol.Range(min=1, max=20000)),
+        vol.Optional("remaining_g"): vol.All(vol.Coerce(int), vol.Range(min=0, max=20000)),
+        vol.Optional("note"): cv.string,
+        vol.Optional("filament_id"): cv.string,
+        vol.Optional("display_name"): cv.string,
+    }
+)
+# service field -> cloud PUT field (verified live: all editable via minimal PUT)
+UPDATE_FIELD_MAP = {
+    "vendor": "filamentVendor",
+    "material": "filamentType",
+    "name": "filamentName",
+    "total_g": "totalNetWeight",
+    "remaining_g": "netWeight",
+    "note": "note",
+    "filament_id": "filamentId",
+    "display_name": "displayName",
+}
 
 
 def _coordinators(hass: HomeAssistant) -> Iterable[BambuFilamentsCoordinator]:
@@ -212,6 +240,24 @@ def async_register_services(hass: HomeAssistant) -> None:
         )
         await coordinator.async_request_refresh()
 
+    async def handle_update_spool(call: ServiceCall) -> None:
+        fields: dict[str, Any] = {
+            cloud_key: call.data[key]
+            for key, cloud_key in UPDATE_FIELD_MAP.items()
+            if key in call.data
+        }
+        if "color" in call.data:
+            color = normalize_hex(call.data["color"])[:7]
+            # Also rewrite the colors array: the apps (and the card) display
+            # `colors` over `color` when present, so updating only `color`
+            # would leave the visible swatch unchanged. Verified: PUT accepts
+            # `colors` (unlike create, which 400s on it).
+            fields["color"] = color
+            fields["colors"] = [color]
+        if not fields:
+            raise HomeAssistantError("update_spool needs at least one field to change")
+        await _update_fields(hass, call.data["spool_id"], fields)
+
     async def handle_delete_spool(call: ServiceCall) -> None:
         coordinator, _spool = _find_spool(hass, call.data["spool_id"])
         await _cloud_write(
@@ -254,4 +300,7 @@ def async_register_services(hass: HomeAssistant) -> None:
     )
     async_register_admin_service(
         hass, DOMAIN, SERVICE_DELETE_SPOOL, handle_delete_spool, DELETE_SPOOL_SCHEMA
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_UPDATE_SPOOL, handle_update_spool, UPDATE_SPOOL_SCHEMA
     )

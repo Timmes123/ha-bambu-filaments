@@ -13,6 +13,10 @@ const STR = {
     title: "Filament",
     add_btn: "Add spool",
     d_title: "New spool",
+    d_edit_title: "Edit spool",
+    d_update: "Save changes",
+    d_delete: "Delete from cloud",
+    d_note: "Note",
     d_vendor: "Vendor",
     d_material: "Material",
     d_name: "Product line (e.g. PLA Matte)",
@@ -48,7 +52,7 @@ const STR = {
     e_show_location: "Show printer/AMS location",
     e_show_code: "Show color code and hex",
     e_show_note: "Show note",
-    e_show_delete: "Show delete button",
+    e_show_edit: "Show edit button",
     e_show_add: "Show add-spool button",
     e_compact: "Compact rows",
     e_low: "Red below (%)",
@@ -64,6 +68,10 @@ const STR = {
     title: "Filament",
     add_btn: "Neue Spule anlegen",
     d_title: "Neue Spule",
+    d_edit_title: "Spule bearbeiten",
+    d_update: "Änderungen speichern",
+    d_delete: "Aus Cloud löschen",
+    d_note: "Notiz",
     d_vendor: "Hersteller",
     d_material: "Material",
     d_name: "Sorte (z. B. PLA Matte)",
@@ -98,7 +106,7 @@ const STR = {
     e_show_location: "Drucker-/AMS-Position anzeigen",
     e_show_code: "Farbcode und Hex anzeigen",
     e_show_note: "Notiz anzeigen",
-    e_show_delete: "Löschen-Button anzeigen",
+    e_show_edit: "Bearbeiten-Button anzeigen",
     e_show_add: "Neue-Spule-Button anzeigen",
     e_compact: "Kompakte Zeilen",
     e_low: "Rot unter (%)",
@@ -118,7 +126,7 @@ const DEFAULTS = {
   show_location: true,
   show_code: true,
   show_note: false,
-  show_delete: false,
+  show_edit: true,
   compact: false,
   low_threshold: 20,
   warn_threshold: 50,
@@ -349,7 +357,7 @@ class BambuFilamentsCard extends HTMLElement {
       </ha-card>${this._css()}`;
 
     this.shadowRoot.querySelector(".addrow")?.addEventListener("click", () => {
-      this._openDialog(t, spools);
+      this._openDialog(t, null);
     });
 
     this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
@@ -370,20 +378,20 @@ class BambuFilamentsCard extends HTMLElement {
         }));
       })
     );
-    this.shadowRoot.querySelectorAll(".del").forEach((el) =>
+    this.shadowRoot.querySelectorAll(".edit").forEach((el) =>
       el.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const name = el.dataset.name;
-        if (!confirm(t.delete_confirm(name))) return;
-        this._hass.callService("bambu_filaments", "delete_spool", {
-          spool_id: Number(el.dataset.spool),
-        });
+        const spool = spools.find((s) => s.spool_id === Number(el.dataset.spool));
+        if (spool) this._openDialog(t, spool);
       })
     );
   }
 
-  async _openDialog(t, spools) {
+  async _openDialog(t, spool) {
+    // spool = null opens the create dialog; a spool object opens it in edit
+    // mode with every field prefilled and a delete button.
     if (this._dialogHost) return;
+    const isEdit = !!spool;
     // The cloud only accepts vendor/product combos from its official catalog
     // (free text is rejected with HTTP 400), so the dialog uses dropdowns fed
     // by the get_catalog action - exactly like the Handy app.
@@ -397,9 +405,18 @@ class BambuFilamentsCard extends HTMLElement {
       catalog = [];
     }
     const vendors = [...new Set(catalog.map((f) => f.vendor).filter(Boolean))];
+    // Editing an official spool preselects its catalog entry; anything else
+    // (custom brand, unknown id) opens in custom mode with fields prefilled.
+    const editEntry = isEdit && catalog.length
+      ? catalog.find(
+          (f) => f.vendor === spool.vendor && f.filament_id === (spool.filament_id || "")
+        ) || null
+      : null;
+    const customInit = isEdit && catalog.length && !editEntry;
     // Do not assume "Bambu Lab" exists (e.g. localized China-region catalogs) -
     // the initial product list must match whatever vendor the select shows.
-    const initialVendor = vendors.includes("Bambu Lab") ? "Bambu Lab" : vendors[0] || "";
+    const initialVendor = editEntry ? editEntry.vendor
+      : vendors.includes("Bambu Lab") ? "Bambu Lab" : vendors[0] || "";
     const productOpts = (vendor) => catalog
       .filter((f) => f.vendor === vendor)
       .map((f) => `<option value="${esc(f.filament_id)}">${esc(f.name)}${f.name === f.material ? "" : ` (${esc(f.material)})`}</option>`)
@@ -454,24 +471,25 @@ class BambuFilamentsCard extends HTMLElement {
           color:var(--primary-text-color, #e3e5ea); }
         .dlg-save { background:#00ae42; color:#fff; font-weight:600; }
         .dlg-save:disabled { opacity:.6; }
+        .dlg-del { background:var(--error-color, #e74c3c); color:#fff; margin-right:auto; }
       </style>
       <div class="overlay">
         <div class="dlg">
-          <div class="dtitle">${t.d_title}</div>
+          <div class="dtitle">${isEdit ? t.d_edit_title : t.d_title}</div>
           ${catalog.length ? `
           <label>${t.d_vendor}
             <select id="f-vendor">
-              ${vendors.map((v) => `<option ${v === initialVendor ? "selected" : ""}>${esc(v)}</option>`).join("")}
-              <option value="__custom__">${t.d_custom}</option>
+              ${vendors.map((v) => `<option ${v === initialVendor && !customInit ? "selected" : ""}>${esc(v)}</option>`).join("")}
+              <option value="__custom__" ${customInit ? "selected" : ""}>${t.d_custom}</option>
             </select></label>
-          <label id="row-product">${t.d_product}
+          <label id="row-product" ${customInit ? "hidden" : ""}>${t.d_product}
             <select id="f-product">${productOpts(initialVendor)}</select></label>
-          <div id="row-custom" hidden>
-            <label>${t.d_brand}<input id="f-cvendor" type="text" placeholder="Flashforge"/></label>
+          <div id="row-custom" ${customInit ? "" : "hidden"}>
+            <label>${t.d_brand}<input id="f-cvendor" type="text" placeholder="Flashforge" value="${customInit ? esc(spool.vendor || "") : ""}"/></label>
             <label>${t.d_material}
-              <input id="f-cmaterial" type="text" list="dl-cmats" placeholder="PLA"/>
+              <input id="f-cmaterial" type="text" list="dl-cmats" placeholder="PLA" value="${customInit ? esc(spool.material || "") : ""}"/>
               <datalist id="dl-cmats">${[...new Set(catalog.map((f) => f.material).filter(Boolean))].map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist></label>
-            <label>${t.d_line}<input id="f-cname" type="text" placeholder="PLA Pro"/></label>
+            <label>${t.d_line}<input id="f-cname" type="text" placeholder="PLA Pro" value="${customInit ? esc(spool.name || "") : ""}"/></label>
             <label>${t.d_profile}
               <select id="f-cprofile">
                 <option value="">${t.d_profile_none}</option>
@@ -479,25 +497,35 @@ class BambuFilamentsCard extends HTMLElement {
               </select></label>
           </div>
           ` : `
-          <label>${t.d_vendor}<input id="f-vendor" type="text" value="Bambu Lab"/></label>
-          <label>${t.d_material}<input id="f-material" type="text" placeholder="PLA"/></label>
-          <label>${t.d_name}<input id="f-name" type="text" placeholder="PLA Matte"/></label>
+          <label>${t.d_vendor}<input id="f-vendor" type="text" value="${isEdit ? esc(spool.vendor || "") : "Bambu Lab"}"/></label>
+          <label>${t.d_material}<input id="f-material" type="text" placeholder="PLA" value="${isEdit ? esc(spool.material || "") : ""}"/></label>
+          <label>${t.d_name}<input id="f-name" type="text" placeholder="PLA Matte" value="${isEdit ? esc(spool.name || "") : ""}"/></label>
           `}
-          <label>${t.d_display}<input id="f-display" type="text" placeholder="Burnt Titanium"/></label>
-          <label class="colorlab">${t.d_color}<input id="f-color" type="color" value="#00ae42"/></label>
+          <label>${t.d_display}<input id="f-display" type="text" placeholder="Burnt Titanium" value="${isEdit ? esc(spool.display_name || "") : ""}"/></label>
+          <label class="colorlab">${t.d_color}<input id="f-color" type="color" value="${isEdit ? (normHex(spool.color).slice(0, 7) || "#00ae42") : "#00ae42"}"/></label>
           <div class="cols2">
-            <label>${t.d_total}<input id="f-total" type="number" min="1" value="1000"/></label>
-            <label>${t.d_remaining}<input id="f-remaining" type="number" min="0" placeholder="1000"/></label>
+            <label>${t.d_total}<input id="f-total" type="number" min="1" value="${isEdit ? (spool.total_g ?? 1000) : 1000}"/></label>
+            <label>${t.d_remaining}<input id="f-remaining" type="number" min="0" placeholder="1000" value="${isEdit ? (spool.remaining_g ?? "") : ""}"/></label>
           </div>
+          ${isEdit ? `<label>${t.d_note}<input id="f-note" type="text" value="${esc(spool.note || "")}"/></label>` : ""}
           <div class="derr" hidden></div>
           <div class="dbtns">
+            ${isEdit ? `<button class="dlg-del">${t.d_delete}</button>` : ""}
             <button class="dlg-cancel">${t.d_cancel}</button>
-            <button class="dlg-save">${t.d_save}</button>
+            <button class="dlg-save">${isEdit ? t.d_update : t.d_save}</button>
           </div>
         </div>
       </div>`;
     document.body.appendChild(host);
     this._dialogHost = host;
+
+    // Preselect the edited spool's product / slicer profile (selects cannot
+    // carry a value attribute in markup).
+    if (editEntry) root.querySelector("#f-product").value = editEntry.filament_id;
+    if (customInit && spool.filament_id) {
+      const pidx = catalog.findIndex((f) => f.filament_id === spool.filament_id);
+      if (pidx >= 0) root.querySelector("#f-cprofile").value = String(pidx);
+    }
 
     const overlay = root.querySelector(".overlay");
     const close = () => {
@@ -506,6 +534,13 @@ class BambuFilamentsCard extends HTMLElement {
     };
     overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
     root.querySelector(".dlg-cancel").addEventListener("click", close);
+    root.querySelector(".dlg-del")?.addEventListener("click", () => {
+      const label = (spool.display_name
+        || `${spool.vendor || ""} ${spool.name || spool.material || ""}`).trim();
+      if (!confirm(t.delete_confirm(label))) return;
+      this._hass.callService("bambu_filaments", "delete_spool", { spool_id: spool.spool_id });
+      close();
+    });
     if (catalog.length) {
       root.querySelector("#f-vendor").addEventListener("change", (ev) => {
         const isCustom = ev.target.value === "__custom__";
@@ -518,7 +553,7 @@ class BambuFilamentsCard extends HTMLElement {
       // Default the slicer profile to the matching Generic entry while the
       // user types the material - until they pick a profile themselves.
       const profileSel = root.querySelector("#f-cprofile");
-      let profileTouched = false;
+      let profileTouched = isEdit;
       profileSel.addEventListener("change", () => { profileTouched = true; });
       root.querySelector("#f-cmaterial").addEventListener("input", (ev) => {
         if (profileTouched) return;
@@ -580,11 +615,35 @@ class BambuFilamentsCard extends HTMLElement {
       btn.disabled = true;
       btn.textContent = t.d_saving;
       try {
-        await this._hass.callService("bambu_filaments", "create_spool", data);
+        if (!isEdit) {
+          await this._hass.callService("bambu_filaments", "create_spool", data);
+        } else {
+          // Send only the fields that actually changed (minimal PUT, like
+          // Studio). Empty strings deliberately clear name/note/profile.
+          const upd = { spool_id: spool.spool_id };
+          const same = (a, b) => String(a ?? "") === String(b ?? "");
+          if (!same(data.vendor, spool.vendor)) upd.vendor = data.vendor;
+          if (!same(data.material, spool.material)) upd.material = data.material;
+          if (!same(data.name, spool.name)) upd.name = data.name;
+          if (data.filament_id !== undefined && !same(data.filament_id, spool.filament_id)) {
+            upd.filament_id = data.filament_id;
+          }
+          const disp = val("f-display");
+          if (!same(disp, spool.display_name)) upd.display_name = disp;
+          const color = normHex(data.color).slice(0, 7);
+          if (color && color !== normHex(spool.color).slice(0, 7)) upd.color = color;
+          if (data.total_g !== (spool.total_g ?? null)) upd.total_g = data.total_g;
+          if (data.remaining_g !== (spool.remaining_g ?? null)) upd.remaining_g = data.remaining_g;
+          const note = val("f-note");
+          if (!same(note, spool.note)) upd.note = note;
+          if (Object.keys(upd).length > 1) {
+            await this._hass.callService("bambu_filaments", "update_spool", upd);
+          }
+        }
         close();
       } catch (e) {
         btn.disabled = false;
-        btn.textContent = t.d_save;
+        btn.textContent = isEdit ? t.d_update : t.d_save;
         err.hidden = false;
         err.textContent = t.d_error;
       }
@@ -620,8 +679,8 @@ class BambuFilamentsCard extends HTMLElement {
     }
     if ((s.status ?? 0) !== 0) meta.push(t.archived);
     if (c.show_note && !combined && s.note) meta.push(esc(s.note));
-    const del = c.show_delete && !combined
-      ? `<ha-icon class="del" icon="mdi:delete-outline" data-spool="${s.spool_id}" data-name="${esc(titleLine)}"></ha-icon>`
+    const edit = c.show_edit && !combined
+      ? `<ha-icon class="edit" icon="mdi:cog-outline" data-spool="${s.spool_id}"></ha-icon>`
       : "";
     return `
       <div class="row ${c.compact ? "compact" : ""}" data-spool="${combined ? "" : s.spool_id}">
@@ -635,7 +694,7 @@ class BambuFilamentsCard extends HTMLElement {
           <div class="grams"><b>${fmtG(s.remaining_g)}</b> / ${fmtG(s.total_g)}</div>
           <div class="pct">${pct}%</div>
         </div>
-        ${del}
+        ${edit}
       </div>`;
   }
 
@@ -671,8 +730,8 @@ class BambuFilamentsCard extends HTMLElement {
       .right { text-align:right; flex:none; }
       .grams { font-size:0.9em; }
       .pct { color:var(--secondary-text-color); font-size:0.8em; }
-      .del { --mdc-icon-size:20px; color:var(--secondary-text-color); flex:none; }
-      .del:hover { color: var(--error-color, #e74c3c); }
+      .edit { --mdc-icon-size:20px; color:var(--secondary-text-color); flex:none; }
+      .edit:hover { color: var(--primary-text-color); }
       .addrow { display:flex; align-items:center; justify-content:center; gap:6px;
                 margin:8px 0 4px; padding:8px; border:1px dashed var(--divider-color);
                 border-radius:8px; color:var(--secondary-text-color); cursor:pointer; }
@@ -775,7 +834,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
         ${check("show_location", t.e_show_location)}
         ${check("show_code", t.e_show_code)}
         ${check("show_note", t.e_show_note)}
-        ${check("show_delete", t.e_show_delete)}
+        ${check("show_edit", t.e_show_edit)}
         ${check("show_add", t.e_show_add)}
         ${check("compact", t.e_compact)}
         <div class="cols">

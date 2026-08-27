@@ -25,7 +25,7 @@ This integration is about your **account-level spool inventory**. It complements
 - **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Bidirectional sync** — spools added or removed in Bambu Studio or the Bambu app appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear there too.
-- **Write actions** — `set_remaining`, `set_note`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
+- **Write actions** — `set_remaining`, `set_note`, `set_filament_id`, `update_spool`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
 - **Dashboard card** — a `custom:bambu-filaments-card` shipped with the integration (auto-registered, no extra install): spool list in the style of Bambu Studio's Filament Manager with color swatches, remaining bars and per-group totals; configurable grouping (filament line/material/none), sorting, compact mode, thresholds, optional delete buttons — with a full UI editor.
 - **Options** — polling interval, per-spool devices on/off, include inactive spools, color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
 - Full config flow with email-code (incl. resend) and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
@@ -84,11 +84,12 @@ Open the integration's *Configure* dialog:
 | `bambu_filaments.set_remaining` | `spool_id`, `remaining_g` | Set a spool's remaining filament weight (grams) |
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
 | `bambu_filaments.set_filament_id` | `spool_id`, `filament_id` | Link a spool to a Bambu slicer profile (e.g. `GFA00` = Bambu PLA Basic, `GFL99` = Generic PLA) so Bambu Studio can assign it with matching print settings; `""` unlinks |
+| `bambu_filaments.update_spool` | `spool_id` + any of `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `note`, `filament_id`, `display_name` | Change fields of an existing spool — only the provided fields are written; empty strings clear custom name/note/profile |
 | `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands) |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete a spool from the cloud library |
 | `bambu_filaments.get_catalog` | – | Returns the vendor/product combinations the cloud accepts (response data) |
 
-`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list. The cloud-write actions (`set_remaining`, `set_note`, `set_filament_id`, `create_spool`, `delete_spool`) are **admin-only** — they irreversibly modify your Bambu account (automations are unaffected).
+`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list. The cloud-write actions (`set_remaining`, `set_note`, `set_filament_id`, `update_spool`, `create_spool`, `delete_spool`) are **admin-only** — they irreversibly modify your Bambu account (automations are unaffected).
 
 ## Dashboard card
 
@@ -123,14 +124,13 @@ compact: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-low-stock.png" width="400" alt="Compact low-stock card filtered to 500 g">
 
-**What's loaded right now** — only spools currently sitting in a printer/AMS, with delete buttons enabled:
+**What's loaded right now** — only spools currently sitting in a printer/AMS:
 
 ```yaml
 type: custom:bambu-filaments-card
 title: Loaded right now
 group_by: none
 only_in_printer: true
-show_delete: true
 ```
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
@@ -138,6 +138,10 @@ show_delete: true
 **Adding spools without leaving the dashboard** — the card's "Add spool" button opens a small dialog with vendor/filament dropdowns fed by the official cloud catalog, a native color picker, and an optional custom display name. Picking **"Custom / third-party…"** unlocks free-text brand and material — so a *Flashforge PLA Burnt Titanium* can be registered with its real brand name, which even the official Bambu apps don't offer. A **slicer profile** dropdown links the custom spool to an official Bambu filament profile (defaults to the matching Generic one), so Bambu Studio can assign the spool with sensible print settings; without a profile Studio treats the spool as unsupported:
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="340" alt="In-card dialog for adding a new spool"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-custom.png" width="340" alt="Custom third-party brand mode of the add dialog">
+
+**Editing spools** — every row has a cog icon (toggleable via `show_edit`) that opens the same dialog prefilled with the spool's data: rename, change brand/material/product, pick another color, correct the weights, edit the note, or link/unlink a slicer profile. Only the fields you actually change are written to the cloud. Deleting the spool from the cloud library also lives in this dialog (with confirmation):
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-edit-dialog.png" width="340" alt="In-card dialog for editing an existing spool">
 
 Everything is also configurable in the **visual editor**, including material filter checkboxes generated from your own inventory:
 
@@ -162,7 +166,7 @@ Everything is also configurable in the **visual editor**, including material fil
 | `show_location` | `true` | Show printer/AMS slot for mounted spools |
 | `show_code` | `true` | Show Bambu color code and hex |
 | `show_note` | `false` | Show the spool note |
-| `show_delete` | `false` | Trash icon per row (deletes from the cloud after confirmation) |
+| `show_edit` | `true` | Cog icon per row that opens the edit dialog (rename, weights, color, profile, note — and delete from the cloud) |
 | `show_add` | `true` | "Add spool" button that opens an in-card dialog (vendor, material, product line, color picker, weights) — for third-party spools too |
 | `compact` | `false` | Slimmer rows without the meta line |
 | `low_threshold` | `20` | Bar turns red below this % |

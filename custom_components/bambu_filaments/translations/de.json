@@ -173,6 +173,52 @@
         }
       }
     },
+    "update_spool": {
+      "name": "Spule bearbeiten",
+      "description": "Felder einer bestehenden Spule in der Bambu-Cloud-Bibliothek ändern. Nur die übergebenen Felder werden geschrieben; leere Texte löschen eigenen Namen, Notiz oder Slicer-Profil.",
+      "fields": {
+        "spool_id": {
+          "name": "Spulen-ID",
+          "description": "Die Cloud-ID der Spule (siehe Attribut spool_id des Spulen-Sensors)."
+        },
+        "vendor": {
+          "name": "Hersteller",
+          "description": "Filament-Hersteller/Marke."
+        },
+        "material": {
+          "name": "Material",
+          "description": "Materialtyp, z. B. PLA oder PETG."
+        },
+        "name": {
+          "name": "Filamentname",
+          "description": "Produktlinie, z. B. PLA Matte."
+        },
+        "color": {
+          "name": "Farbe",
+          "description": "Hex-Farbe, z. B. #FF6A13."
+        },
+        "total_g": {
+          "name": "Spulengröße",
+          "description": "Filamentgewicht der vollen Spule in Gramm."
+        },
+        "remaining_g": {
+          "name": "Restgewicht",
+          "description": "Aktuelles Restgewicht in Gramm."
+        },
+        "note": {
+          "name": "Notiz",
+          "description": "Notiztext (leer löscht sie)."
+        },
+        "filament_id": {
+          "name": "Filament-ID",
+          "description": "Bambu-Slicer-Profil-ID (leer entfernt die Verknüpfung)."
+        },
+        "display_name": {
+          "name": "Eigener Name",
+          "description": "Anzeigename der Spule (leer löscht ihn)."
+        }
+      }
+    },
     "get_catalog": {
       "name": "Filament-Katalog abrufen",
       "description": "Liefert die Hersteller/Produkt-Kombinationen, die die Bambu-Cloud beim Anlegen von Spulen akzeptiert."
