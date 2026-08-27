@@ -528,12 +528,13 @@ class BambuFilamentsCard extends HTMLElement {
       if (pidx >= 0) root.querySelector("#f-cprofile").value = String(pidx);
     }
 
-    const overlay = root.querySelector(".overlay");
     const close = () => {
       host.remove();
       this._dialogHost = null;
     };
-    overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
+    // Deliberately NO click-outside-to-close: selecting text in a field and
+    // releasing the mouse over the overlay would fire a click there and slam
+    // the dialog shut. Only Cancel (or delete/save) closes it.
     root.querySelector(".dlg-cancel").addEventListener("click", close);
     root.querySelector(".dlg-del")?.addEventListener("click", () => {
       const label = (spool.display_name
