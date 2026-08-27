@@ -123,7 +123,7 @@
     },
     "create_spool": {
       "name": "Spule anlegen",
-      "description": "Neue Spule in der Bambu-Cloud-Filamentbibliothek anlegen (erscheint auch in Studio/Handy).",
+      "description": "Neue Spule in der Bambu-Cloud-Filamentbibliothek anlegen (erscheint auch in Studio und der Bambu-App).",
       "fields": {
         "vendor": {
           "name": "Hersteller",
@@ -155,7 +155,7 @@
         },
         "display_name": {
           "name": "Eigener Name",
-          "description": "Optionaler Anzeigename der Spule in Studio/Handy und Home Assistant."
+          "description": "Optionaler Anzeigename der Spule in Studio, der Bambu-App und Home Assistant."
         }
       }
     },

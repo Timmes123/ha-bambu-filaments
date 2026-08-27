@@ -123,7 +123,7 @@
     },
     "create_spool": {
       "name": "Create spool",
-      "description": "Add a new spool to the Bambu cloud filament library (appears in Studio/Handy too).",
+      "description": "Add a new spool to the Bambu cloud filament library (appears in Studio and the Bambu app too).",
       "fields": {
         "vendor": {
           "name": "Vendor",
@@ -155,7 +155,7 @@
         },
         "display_name": {
           "name": "Custom name",
-          "description": "Optional user-facing spool name shown in Studio/Handy and Home Assistant."
+          "description": "Optional user-facing spool name shown in Studio, the Bambu app and Home Assistant."
         }
       }
     },
