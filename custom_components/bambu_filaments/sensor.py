@@ -7,7 +7,6 @@ remaining-% and a remaining-weight sensor.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from urllib.parse import quote
 
@@ -17,58 +16,38 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, UnitOfMass
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import BambuFilamentsConfigEntry
 from .colors import normalize_hex
-from .const import (
-    DEFAULT_INCLUDE_INACTIVE,
-    DEFAULT_SPOOL_ENTITIES,
-    DOMAIN,
-    OPT_INCLUDE_INACTIVE,
-    OPT_SPOOL_ENTITIES,
-)
+from .const import DOMAIN
 from .coordinator import BambuFilamentsCoordinator, spool_is_active, spool_remaining_pct
-
-
-_DATE_RE = re.compile(r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}")
-_TIME_RE = re.compile(r"\d{1,2}:\d{2}")
-
-
-def clean_display_name(spool: dict[str, Any]) -> str | None:
-    """The user-chosen spool name, or None.
-
-    Bambu's apps sometimes auto-fill displayName with a localized creation
-    stamp like "07/29/2026 10:03 hinzugefügt" (AMS bulk-add); Studio's own UI
-    ignores the field entirely for such spools. Anything containing both a
-    date and a time is treated as auto-generated, not a real name.
-    """
-    name = (spool.get("displayName") or "").strip()
-    if not name or (_DATE_RE.search(name) and _TIME_RE.search(name)):
-        return None
-    return name
+from .entity import (
+    async_setup_spool_platform,
+    clean_display_name,
+    spool_device_info,
+)
 
 
 def _spool_colors(spool: dict[str, Any]) -> list[str]:
-    return [c for c in (spool.get("colors") or [spool.get("color")]) if c]
+    """Validated, normalized hex colors of a spool (may be empty)."""
+    raw = spool.get("colors") or [spool.get("color")]
+    return [h for h in (normalize_hex(c) for c in raw if c) if h]
 
 
 def _swatch_picture(colors: list[str]) -> str | None:
     """Small SVG color swatch as data URI, used as the entity picture."""
-    normalized = [normalize_hex(c) for c in colors if c]
-    if not normalized:
+    if not colors:
         return None
-    if len(normalized) == 1:
-        body = f"<circle cx='16' cy='16' r='14' fill='{normalized[0]}'/>"
+    if len(colors) == 1:
+        body = f"<circle cx='16' cy='16' r='14' fill='{colors[0]}'/>"
     else:
         body = (
-            f"<path d='M16 2 A14 14 0 0 0 16 30 Z' fill='{normalized[0]}'/>"
-            f"<path d='M16 2 A14 14 0 0 1 16 30 Z' fill='{normalized[1]}'/>"
+            f"<path d='M16 2 A14 14 0 0 0 16 30 Z' fill='{colors[0]}'/>"
+            f"<path d='M16 2 A14 14 0 0 1 16 30 Z' fill='{colors[1]}'/>"
         )
     svg = (
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
@@ -83,6 +62,7 @@ def spool_attributes(
     spool: dict[str, Any], coordinator: BambuFilamentsCoordinator
 ) -> dict[str, Any]:
     color_name, color_code = coordinator.color_lookup(spool)
+    colors = _spool_colors(spool)
     return {
         "spool_id": spool.get("id"),
         "vendor": spool.get("filamentVendor"),
@@ -90,12 +70,15 @@ def spool_attributes(
         "name": spool.get("filamentName"),
         "display_name": clean_display_name(spool),
         "filament_id": spool.get("filamentId"),
-        "color": spool.get("color"),
-        "colors": spool.get("colors"),
+        # Only validated hex values are exposed - raw cloud color strings end
+        # up in CSS in the card, so this doubles as the injection guard.
+        "color": colors[0] if colors else None,
+        "colors": colors or None,
         "color_name": color_name,
         "bambu_color_code": color_code,
         "remaining_g": spool.get("netWeight"),
         "total_g": spool.get("totalNetWeight"),
+        "remaining_pct": spool_remaining_pct(spool),
         "status": spool.get("status"),
         "note": spool.get("note"),
         "tray_id_name": spool.get("trayIdName"),
@@ -105,21 +88,6 @@ def spool_attributes(
         "ams_id": spool.get("amsId"),
         "slot_id": spool.get("slotId"),
     }
-
-
-def _spool_display_name(
-    spool: dict[str, Any], coordinator: BambuFilamentsCoordinator
-) -> str:
-    # A user-chosen name from Studio/Handy ("displayName") wins outright.
-    if custom := clean_display_name(spool):
-        return custom
-    base = spool.get("filamentName") or spool.get("filamentType") or "Spool"
-    color_name, _ = coordinator.color_lookup(spool)
-    if color_name:
-        return f"{base} {color_name}"
-    if hex_color := normalize_hex(spool.get("color")):
-        return f"{base} {hex_color[:7]}"
-    return base
 
 
 async def async_setup_entry(
@@ -132,66 +100,15 @@ async def async_setup_entry(
     async_add_entities(
         [SpoolCountSensor(coordinator, entry), TotalRemainingSensor(coordinator, entry)]
     )
-
-    if not entry.options.get(OPT_SPOOL_ENTITIES, DEFAULT_SPOOL_ENTITIES):
-        _remove_stale_spools(hass, entry, keep=set())
-        return
-
-    include_inactive = entry.options.get(OPT_INCLUDE_INACTIVE, DEFAULT_INCLUDE_INACTIVE)
-    known: set[int] = set()
-
-    @callback
-    def _sync_spools() -> None:
-        data = coordinator.data or {}
-        wanted = {
-            sid
-            for sid, spool in data.items()
-            if include_inactive or spool_is_active(spool)
-        }
-        if new := wanted - known:
-            entities: list[SensorEntity] = []
-            for sid in new:
-                entities.append(SpoolRemainingSensor(coordinator, entry, sid))
-                entities.append(SpoolWeightSensor(coordinator, entry, sid))
-            async_add_entities(entities)
-            known.update(new)
-        if known - wanted:
-            _remove_stale_spools(hass, entry, keep=wanted)
-            known.intersection_update(wanted)
-
-    _sync_spools()
-    entry.async_on_unload(coordinator.async_add_listener(_sync_spools))
-
-
-def _remove_stale_spools(
-    hass: HomeAssistant, entry: BambuFilamentsConfigEntry, keep: set[int]
-) -> None:
-    """Drop registry entities and devices of spools that should no longer exist."""
-    ent_reg = er.async_get(hass)
-    prefix = f"{entry.entry_id}-spool-"
-    for reg_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        unique_id = reg_entry.unique_id
-        if not unique_id.startswith(prefix) or unique_id.endswith(("-count", "-remaining")):
-            continue
-        try:
-            sid = int(unique_id.removeprefix(prefix).split("-")[0])
-        except ValueError:
-            continue
-        if sid not in keep:
-            ent_reg.async_remove(reg_entry.entity_id)
-    dev_reg = dr.async_get(hass)
-    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
-        for domain, identifier in device.identifiers:
-            if domain != DOMAIN or not identifier.startswith(prefix):
-                continue
-            try:
-                sid = int(identifier.removeprefix(prefix))
-            except ValueError:
-                continue
-            if sid not in keep:
-                dev_reg.async_update_device(
-                    device.id, remove_config_entry_id=entry.entry_id
-                )
+    async_setup_spool_platform(
+        hass,
+        entry,
+        async_add_entities,
+        lambda coord, ent, sid: [
+            SpoolRemainingSensor(coord, ent, sid),
+            SpoolWeightSensor(coord, ent, sid),
+        ],
+    )
 
 
 class BambuFilamentsEntity(CoordinatorEntity[BambuFilamentsCoordinator]):
@@ -224,6 +141,9 @@ class SpoolCountSensor(BambuFilamentsEntity, SensorEntity):
 
     _attr_translation_key = "spool_count"
     _attr_icon = "mdi:counter"
+    # The spool list is live data for the card, not history - keeping it out
+    # of the recorder avoids writing the full inventory to the DB every poll.
+    _unrecorded_attributes = frozenset({"spools", "remaining_g_by_material"})
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
@@ -261,8 +181,6 @@ class TotalRemainingSensor(BambuFilamentsEntity, SensorEntity):
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
-        # Must NOT start with "{entry_id}-spool-<int>" (stale-spool cleanup
-        # prefix) and must keep the pre-v0.3.0 value for registry continuity.
         self._attr_unique_id = f"{entry.entry_id}-total-remaining"
 
     @property
@@ -284,16 +202,7 @@ class SpoolEntityBase(CoordinatorEntity[BambuFilamentsCoordinator], SensorEntity
         super().__init__(coordinator)
         self._entry = entry
         self._spool_id = spool_id
-        spool = (coordinator.data or {}).get(spool_id) or {}
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.entry_id}-spool-{spool_id}")},
-            via_device=(DOMAIN, entry.entry_id),
-            name=_spool_display_name(spool, coordinator),
-            manufacturer=spool.get("filamentVendor") or "Bambu Lab",
-            model=spool.get("filamentName") or spool.get("filamentType"),
-            model_id=spool.get("filamentId"),
-            serial_number=spool.get("trayIdName") or None,
-        )
+        self._attr_device_info = spool_device_info(coordinator, entry, spool_id)
 
     @property
     def _spool(self) -> dict[str, Any] | None:

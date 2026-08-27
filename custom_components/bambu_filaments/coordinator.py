@@ -58,6 +58,8 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         )
         self.client = client
         self.colordb = colordb
+        self._catalog_cache: list[dict[str, Any]] | None = None
+        self._catalog_cached_at: float = 0.0
 
     def color_lookup(self, spool: dict[str, Any]) -> tuple[str | None, str | None]:
         """Localized official color name + Bambu color code for a spool."""
@@ -76,4 +78,36 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             ) from err
         except BambuCloudError as err:
             raise UpdateFailed(str(err)) from err
-        return {s["id"]: s for s in spools if isinstance(s.get("id"), int)}
+        return {
+            s["id"]: _sanitize_spool(s) for s in spools if isinstance(s.get("id"), int)
+        }
+
+    async def async_get_catalog(self) -> list[dict[str, Any]]:
+        """Normalized create-catalog entries, cached for an hour."""
+        now = self.hass.loop.time()
+        if self._catalog_cache is None or now - self._catalog_cached_at > 3600:
+            raw = await self.hass.async_add_executor_job(self.client.get_catalog)
+            self._catalog_cache = [
+                {
+                    "vendor": e.get("filamentVendor"),
+                    "material": e.get("filamentType"),
+                    "name": e.get("filamentName"),
+                    "filament_id": e.get("filamentId"),
+                }
+                for e in raw.get("filamentSettings") or []
+                if isinstance(e, dict)
+            ]
+            self._catalog_cached_at = now
+        return self._catalog_cache
+
+
+def _sanitize_spool(spool: dict[str, Any]) -> dict[str, Any]:
+    """Coerce cloud weight fields to numbers so sums and sensors never throw."""
+    for key, default in (("netWeight", 0), ("totalNetWeight", None)):
+        value = spool.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            try:
+                spool[key] = int(value)
+            except (TypeError, ValueError):
+                spool[key] = default
+    return spool

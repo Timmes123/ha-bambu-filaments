@@ -11,7 +11,7 @@ from . import BambuFilamentsConfigEntry
 from .const import CONF_TOKEN
 
 REDACT_ENTRY = {CONF_TOKEN, "email"}
-REDACT_SPOOL = {"RFID", "devId", "amsSn", "slotId", "deviceName"}
+REDACT_SPOOL = {"RFID", "devId", "amsSn", "slotId", "deviceName", "trayIdName", "amsId"}
 
 
 async def async_get_config_entry_diagnostics(

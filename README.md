@@ -20,7 +20,7 @@ This integration is about your **account-level spool inventory**. It complements
 
 ## Features
 
-- **One device per spool** (optional, on by default) named with the official webshop color (e.g. *PETG HF Waldgrün*), carrying a remaining-% sensor (with a color-swatch entity picture and full details as attributes), a remaining-weight sensor, and a **Delete from Bambu Cloud** button.
+- **One device per spool** (optional, on by default) named with the official webshop color in your HA language (e.g. *PETG HF Forest Green*, or a custom name you gave the spool), carrying a remaining-% sensor (with a color-swatch entity picture and full details as attributes), a remaining-weight sensor, and a **Delete from Bambu Cloud** button.
 - **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Bidirectional sync** — spools added or removed in Bambu Studio/Handy appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear in Studio/Handy.
@@ -63,8 +63,9 @@ This integration is about your **account-level spool inventory**. It complements
 Open the integration's *Configure* dialog:
 
 - **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing.
-- **One sensor per spool** (default on) — turn off if you only want the aggregate sensors.
-- **Include inactive spools** (default off) — also create sensors for archived/empty spools.
+- **One device per spool** (default on) — turn off if you only want the aggregate sensors.
+- **Include inactive spools** (default off) — also create devices for archived/empty spools.
+- **Color name language** (default automatic) — force English or German color names; Bambu's own database leaves some colors untranslated, those fall back to English.
 
 ## FAQ
 
@@ -81,10 +82,11 @@ Open the integration's *Configure* dialog:
 | `bambu_filaments.refresh` | – | Re-fetch the library from the cloud now |
 | `bambu_filaments.set_remaining` | `spool_id`, `remaining_g` | Set a spool's remaining filament weight (grams) |
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
-| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id` | Add a new spool to the cloud library |
+| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands) |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete a spool from the cloud library |
+| `bambu_filaments.get_catalog` | – | Returns the vendor/product combinations the cloud accepts (response data) |
 
-`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list.
+`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list. The cloud-write actions (`set_remaining`, `set_note`, `create_spool`, `delete_spool`) are **admin-only** — they irreversibly modify your Bambu account (automations are unaffected).
 
 ## Dashboard card
 
@@ -145,7 +147,7 @@ Everything is also configurable in the **visual editor**, including material fil
 |---|---|---|
 | `entity` | auto | The aggregate spools sensor |
 | `title` | "Filament" | Card title ("" hides the header) |
-| `group_by` | `line` | `line` (vendor + product), `material`, or `none` |
+| `group_by` | `line` | `line` (brand + product), `product` (product line across all brands, e.g. one "PLA Matte" group), `material`, or `none` |
 | `sort` | `name` | `name`, `remaining_asc`, `remaining_desc` |
 | `combine` | `false` | Merge identical spools (same vendor/product/color) into one ×n row with summed remaining — a color with enough backup spools then no longer counts as low |
 | `max_remaining_g` | – | Filter: only show entries with at most this many grams left |

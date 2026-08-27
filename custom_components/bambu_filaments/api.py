@@ -81,9 +81,22 @@ class BambuCloudClient:
             raise BambuCloudError(f"Connection to Bambu cloud failed: {err}") from err
         if response.status_code in (403, 429) and "cloudflare" in response.text.lower():
             raise CloudflareBlocked(f"Blocked by Cloudflare (HTTP {response.status_code})")
-        if response.status_code == 401:
+        # Only a 401 on an authenticated request means the stored token expired;
+        # login/code/TFA endpoints answer 401 for bad credentials, which the
+        # callers map to their own error types.
+        if response.status_code == 401 and auth and self.token:
             raise AuthExpired("Bambu cloud token rejected (HTTP 401)")
         return response
+
+    @staticmethod
+    def _json(response) -> dict[str, Any]:
+        """Decode a response body, keeping failures inside the error taxonomy."""
+        try:
+            return response.json()
+        except Exception as err:
+            raise BambuCloudError(
+                f"Invalid (non-JSON) response from Bambu cloud (HTTP {response.status_code})"
+            ) from err
 
     # ------------------------------------------------------------------ auth
 
@@ -101,7 +114,7 @@ class BambuCloudClient:
         )
         if response.status_code != 200:
             raise AuthFailed(f"Login failed (HTTP {response.status_code})")
-        data = response.json()
+        data = self._json(response)
         if token := data.get("accessToken"):
             self.token = token
             return token
@@ -134,7 +147,7 @@ class BambuCloudClient:
             body={"account": email, "code": code},
             auth=False,
         )
-        if response.status_code == 200 and (token := response.json().get("accessToken")):
+        if response.status_code == 200 and (token := self._json(response).get("accessToken")):
             self.token = token
             return token
         raise CodeIncorrect(f"Verification code rejected (HTTP {response.status_code})")
@@ -169,7 +182,7 @@ class BambuCloudClient:
                 raise BambuCloudError(
                     f"Fetching filament inventory failed (HTTP {response.status_code})"
                 )
-            data = response.json()
+            data = self._json(response)
             hits = [h for h in (data.get("hits") or []) if isinstance(h, dict)]
             spools.extend(hits)
             total = data.get("total")
@@ -183,7 +196,7 @@ class BambuCloudClient:
         response = self._request("get", f"{self._api}/v1/design-user-service/filament/config")
         if response.status_code != 200:
             raise BambuCloudError(f"Fetching filament catalog failed (HTTP {response.status_code})")
-        return response.json()
+        return self._json(response)
 
     def update_spool(self, spool: dict[str, Any]) -> dict[str, Any]:
         """Update one spool. `spool` must contain at least id and filamentName."""
@@ -192,7 +205,7 @@ class BambuCloudClient:
         )
         if response.status_code != 200:
             raise BambuCloudError(f"Updating spool failed (HTTP {response.status_code})")
-        return response.json()
+        return self._json(response)
 
     def create_spool(self, spool: dict[str, Any]) -> None:
         """Create a spool. The API returns an empty body; re-fetch to see it."""

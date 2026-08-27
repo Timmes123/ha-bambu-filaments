@@ -35,7 +35,8 @@
     },
     "abort": {
       "already_configured": "This account is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "wrong_account": "Re-authentication must use the same Bambu account this entry was set up with."
     }
   },
   "options": {

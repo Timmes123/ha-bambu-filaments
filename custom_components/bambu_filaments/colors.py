@@ -9,6 +9,7 @@ at runtime and cached in HA storage so we do not redistribute it.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -29,9 +30,17 @@ STORAGE_VERSION = 1
 REFRESH_AFTER_S = 7 * 24 * 3600
 
 
+_HEX_RE = re.compile(r"^#?[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
+
+
 def normalize_hex(value: str | None) -> str:
-    """Uppercase #RRGGBBAA form so cloud and database hexes compare equal."""
-    if not value:
+    """Uppercase #RRGGBBAA form so cloud and database hexes compare equal.
+
+    Returns "" for anything that is not a 6/8-digit hex color - cloud color
+    values end up in CSS/SVG, so strict validation doubles as the injection
+    guard.
+    """
+    if not value or not isinstance(value, str) or not _HEX_RE.match(value.strip()):
         return ""
     value = value.strip().upper()
     if not value.startswith("#"):
@@ -42,7 +51,7 @@ def normalize_hex(value: str | None) -> str:
 
 
 def _color_key(colors: list[str]) -> tuple[str, ...]:
-    return tuple(sorted(normalize_hex(c) for c in colors if c))
+    return tuple(sorted(h for h in (normalize_hex(c) for c in colors) if h))
 
 
 class BambuColorDB:
@@ -55,16 +64,34 @@ class BambuColorDB:
         self._by_color: dict[tuple[str, ...], dict] = {}
 
     async def async_load(self) -> None:
-        """Load from cache, refreshing from the public source when stale."""
+        """Load from cache, refreshing from the public source when stale.
+
+        Never raises: the color database is cosmetic, so a malformed upstream
+        file (or poisoned cache) must not break integration setup. The cache
+        is only written after the payload indexed successfully.
+        """
         cached = await self._store.async_load() or {}
         entries = cached.get("data")
         stale = time.time() - cached.get("fetched_at", 0) > REFRESH_AFTER_S
-        if not entries or stale:
-            if fresh := await self._fetch():
-                entries = fresh
-                await self._store.async_save({"data": entries, "fetched_at": time.time()})
+        if entries and not stale and self._try_build(entries):
+            return
+        if fresh := await self._fetch():
+            if self._try_build(fresh):
+                await self._store.async_save({"data": fresh, "fetched_at": time.time()})
+                return
+        # Fetch failed or was unusable - fall back to any usable cache.
         if entries:
+            self._try_build(entries)
+
+    def _try_build(self, entries: list[dict]) -> bool:
+        try:
             self._build_index(entries)
+            return True
+        except Exception as err:  # malformed upstream data must never break setup
+            _LOGGER.warning("Color database has an unexpected format: %s", err)
+            self._by_id_color = {}
+            self._by_color = {}
+            return False
 
     async def _fetch(self) -> list[dict] | None:
         try:

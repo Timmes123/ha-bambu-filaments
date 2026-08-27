@@ -32,7 +32,7 @@ const STR = {
     // editor
     e_entity: "Spools sensor (empty = automatic)",
     e_title: "Title",
-    e_group: "Group by", g_line: "Filament line", g_material: "Material", g_none: "No grouping",
+    e_group: "Group by", g_line: "Filament line (brand + product)", g_product: "Product line (all brands)", g_material: "Material", g_none: "No grouping",
     e_sort: "Sort by", s_name: "Name", s_rem_asc: "Remaining (low first)", s_rem_desc: "Remaining (high first)",
     e_combine: "Combine identical spools (sum remaining)",
     e_filters: "Filters",
@@ -80,7 +80,7 @@ const STR = {
     d_error: "Die Cloud hat die Spule abgelehnt. Material und Sorte prüfen.",
     e_entity: "Spulen-Sensor (leer = automatisch)",
     e_title: "Titel",
-    e_group: "Gruppieren nach", g_line: "Filamentlinie", g_material: "Material", g_none: "Keine Gruppierung",
+    e_group: "Gruppieren nach", g_line: "Filamentlinie (Hersteller + Sorte)", g_product: "Sorte (alle Hersteller)", g_material: "Material", g_none: "Keine Gruppierung",
     e_sort: "Sortieren nach", s_name: "Name", s_rem_asc: "Restmenge (wenig zuerst)", s_rem_desc: "Restmenge (viel zuerst)",
     e_combine: "Gleiche Filamente zusammenfassen (Rest addieren)",
     e_filters: "Filter",
@@ -136,11 +136,16 @@ function findSpoolsEntity(hass) {
   return null;
 }
 
+const HEX_RE = /^#?[0-9A-F]{6}([0-9A-F]{2})?$/;
+
 function normHex(v) {
   // The cloud sometimes returns colors without the leading "#" (AMS-created
-  // spools) - normalize before using as CSS or as a combine key.
+  // spools) - normalize before using as CSS or as a combine key. Anything
+  // that is not a 6/8-digit hex returns "" (the value ends up in CSS, so
+  // strict validation doubles as the injection guard).
   if (!v) return "";
   v = String(v).trim().toUpperCase();
+  if (!HEX_RE.test(v)) return "";
   return v.startsWith("#") ? v : `#${v}`;
 }
 
@@ -157,7 +162,7 @@ function esc(s) {
 
 function swatchStyle(spool) {
   const colors = (spool.colors && spool.colors.length ? spool.colors : [spool.color])
-    .filter(Boolean).map(normHex);
+    .map(normHex).filter(Boolean);
   if (!colors.length) return "background:#888";
   if (colors.length === 1) return `background:${esc(colors[0])}`;
   return `background:linear-gradient(135deg, ${esc(colors[0])} 50%, ${esc(colors[1])} 50%)`;
@@ -193,7 +198,16 @@ class BambuFilamentsCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    const entityId = this._config?.entity || findSpoolsEntity(hass);
+    // Cache the auto-discovered entity: hass is reassigned on every state
+    // change in the whole instance, and a full hass.states scan each time is
+    // wasted main-thread work on large installations.
+    let entityId = this._config?.entity;
+    if (!entityId) {
+      if (!this._autoEntity || !hass.states[this._autoEntity]) {
+        this._autoEntity = findSpoolsEntity(hass);
+      }
+      entityId = this._autoEntity;
+    }
     const st = entityId ? hass.states[entityId] : null;
     const key = st ? `${entityId}|${st.last_updated}` : "none";
     if (key !== this._lastRenderKey || this._configDirty) {
@@ -214,8 +228,10 @@ class BambuFilamentsCard extends HTMLElement {
       this._entityMapKey = this._lastRenderKey;
       for (const [id, st] of Object.entries(this._hass.states)) {
         if (!id.startsWith("sensor.")) continue;
+        const ent = this._hass.entities?.[id];
+        if (ent && ent.platform !== "bambu_filaments") continue;
         const sid = st.attributes?.spool_id;
-        if (sid != null && st.attributes?.total_g != null) this._entityMap[sid] = id;
+        if (sid != null && st.attributes?.remaining_g !== undefined) this._entityMap[sid] = id;
       }
     }
     return this._entityMap[spoolId];
@@ -263,7 +279,7 @@ class BambuFilamentsCard extends HTMLElement {
       }
       const rec = map.get(key);
       if (s.in_printer && s.device_name) {
-        rec._locations.push(`${s.device_name}${s.slot_id !== undefined && s.slot_id !== "" ? ` · Slot ${s.slot_id}` : ""}`);
+        rec._locations.push(`${s.device_name}${s.slot_id != null && s.slot_id !== "" ? ` · Slot ${s.slot_id}` : ""}`);
       }
     }
     return [...map.values()];
@@ -274,7 +290,9 @@ class BambuFilamentsCard extends HTMLElement {
     if (c.group_by === "none") return [[null, spools]];
     const keyFn = c.group_by === "material"
       ? (s) => s.material || "?"
-      : (s) => `${s.vendor || "?"} ${s.name || s.material || "?"}`;
+      : c.group_by === "product"
+        ? (s) => s.name || s.material || "?"
+        : (s) => `${s.vendor || "?"} ${s.name || s.material || "?"}`;
     const map = new Map();
     for (const s of spools) {
       const k = keyFn(s);
@@ -375,9 +393,12 @@ class BambuFilamentsCard extends HTMLElement {
       catalog = [];
     }
     const vendors = [...new Set(catalog.map((f) => f.vendor).filter(Boolean))];
-    const productOpts = (vendor, selected) => catalog
+    // Do not assume "Bambu Lab" exists (e.g. localized China-region catalogs) -
+    // the initial product list must match whatever vendor the select shows.
+    const initialVendor = vendors.includes("Bambu Lab") ? "Bambu Lab" : vendors[0] || "";
+    const productOpts = (vendor) => catalog
       .filter((f) => f.vendor === vendor)
-      .map((f, i) => `<option value="${esc(f.filament_id)}" ${f.filament_id === selected ? "selected" : ""}>${esc(f.name)}${f.name === f.material ? "" : ` (${esc(f.material)})`}</option>`)
+      .map((f) => `<option value="${esc(f.filament_id)}">${esc(f.name)}${f.name === f.material ? "" : ` (${esc(f.material)})`}</option>`)
       .join("");
 
     // The dialog lives on document.body: HA's dashboard containers use CSS
@@ -427,11 +448,11 @@ class BambuFilamentsCard extends HTMLElement {
           ${catalog.length ? `
           <label>${t.d_vendor}
             <select id="f-vendor">
-              ${vendors.map((v) => `<option ${v === "Bambu Lab" ? "selected" : ""}>${esc(v)}</option>`).join("")}
+              ${vendors.map((v) => `<option ${v === initialVendor ? "selected" : ""}>${esc(v)}</option>`).join("")}
               <option value="__custom__">${t.d_custom}</option>
             </select></label>
           <label id="row-product">${t.d_product}
-            <select id="f-product">${productOpts("Bambu Lab")}</select></label>
+            <select id="f-product">${productOpts(initialVendor)}</select></label>
           <div id="row-custom" hidden>
             <label>${t.d_brand}<input id="f-cvendor" type="text" placeholder="Flashforge"/></label>
             <label>${t.d_material}
@@ -500,7 +521,10 @@ class BambuFilamentsCard extends HTMLElement {
           return;
         }
       } else if (catalog.length) {
-        const entry = catalog.find((f) => f.filament_id === val("f-product"));
+        // Match vendor + id (an id could repeat across vendors in the catalog).
+        const entry = catalog.find(
+          (f) => f.filament_id === val("f-product") && f.vendor === val("f-vendor")
+        ) || catalog.find((f) => f.filament_id === val("f-product"));
         if (!entry) {
           err.hidden = false;
           err.textContent = t.d_error;
@@ -542,9 +566,13 @@ class BambuFilamentsCard extends HTMLElement {
       : pct < c.warn_threshold ? "#f39c12"
       : "#00ae42";
     const custom = (s.display_name || "").trim();
+    const colorLabel = s.color_name || normHex(s.color).slice(0, 7);
     const titleLine = custom || (c.group_by === "line"
-      ? (s.color_name || normHex(s.color).slice(0, 7) || s.name || "?")
-      : `${s.name || s.material || "?"} ${s.color_name || normHex(s.color).slice(0, 7)}`.trim());
+      ? (colorLabel || s.name || "?")
+      : c.group_by === "product"
+        // Group header carries the product; rows distinguish by brand + color.
+        ? `${s.vendor || "?"} ${colorLabel}`.trim()
+        : `${s.name || s.material || "?"} ${colorLabel}`.trim());
     const combined = (s._count || 1) > 1;
     // The color name is already part of the title in every grouping mode -
     // the meta line only carries code/hex/location/note.
@@ -554,7 +582,7 @@ class BambuFilamentsCard extends HTMLElement {
     if (c.show_location) {
       if (combined && s._locations?.length) meta.push(s._locations.map(esc).join(", "));
       else if (s.in_printer && s.device_name) {
-        meta.push(`${esc(s.device_name)}${s.slot_id !== undefined && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
+        meta.push(`${esc(s.device_name)}${s.slot_id != null && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
       }
     }
     if ((s.status ?? 0) !== 0) meta.push(t.archived);
@@ -686,6 +714,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
           <label>${t.e_group}
             <select data-f="group_by">
               <option value="line" ${c.group_by === "line" ? "selected" : ""}>${t.g_line}</option>
+              <option value="product" ${c.group_by === "product" ? "selected" : ""}>${t.g_product}</option>
               <option value="material" ${c.group_by === "material" ? "selected" : ""}>${t.g_material}</option>
               <option value="none" ${c.group_by === "none" ? "selected" : ""}>${t.g_none}</option>
             </select></label>

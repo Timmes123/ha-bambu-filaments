@@ -79,6 +79,9 @@ class BambuFilamentsConfigFlow(ConfigFlow, domain=DOMAIN):
         }
         await self.async_set_unique_id(f"{self._region}-{self._email.lower()}")
         if self.source == SOURCE_REAUTH:
+            # Reauth must stay on the same account - a login for a different
+            # email/region would silently swap the entry's identity.
+            self._abort_if_unique_id_mismatch(reason="wrong_account")
             return self.async_update_reload_and_abort(self._get_reauth_entry(), data=data)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(title=self._email, data=data)

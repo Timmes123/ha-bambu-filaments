@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+from collections.abc import Iterable
 from typing import Any
 
 import voluptuous as vol
@@ -10,8 +10,9 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.service import async_register_admin_service
 
-from .api import BambuCloudError
+from .api import AuthExpired, BambuCloudError
 from .colors import normalize_hex
 from .const import DOMAIN, SERVICE_REFRESH
 from .coordinator import BambuFilamentsCoordinator
@@ -21,6 +22,11 @@ SERVICE_SET_NOTE = "set_note"
 SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
 SERVICE_GET_CATALOG = "get_catalog"
+
+# 6-digit hex, optionally with alpha and/or leading '#'.
+COLOR_SCHEMA = vol.All(
+    cv.string, vol.Match(r"^#?[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
+)
 
 SET_REMAINING_SCHEMA = vol.Schema(
     {
@@ -39,7 +45,7 @@ CREATE_SPOOL_SCHEMA = vol.Schema(
         vol.Optional("vendor", default="Bambu Lab"): cv.string,
         vol.Required("material"): cv.string,
         vol.Required("name"): cv.string,
-        vol.Required("color"): cv.string,
+        vol.Required("color"): COLOR_SCHEMA,
         vol.Optional("total_g", default=1000): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=20000)
         ),
@@ -51,25 +57,67 @@ CREATE_SPOOL_SCHEMA = vol.Schema(
 DELETE_SPOOL_SCHEMA = vol.Schema({vol.Required("spool_id"): cv.positive_int})
 
 
+def _coordinators(hass: HomeAssistant) -> Iterable[BambuFilamentsCoordinator]:
+    for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+        coordinator = getattr(entry, "runtime_data", None)
+        if isinstance(coordinator, BambuFilamentsCoordinator):
+            yield coordinator
+
+
+def _first_coordinator(hass: HomeAssistant) -> BambuFilamentsCoordinator:
+    for coordinator in _coordinators(hass):
+        return coordinator
+    raise HomeAssistantError("No Bambu Filaments account is set up")
+
+
 def _find_spool(
     hass: HomeAssistant, spool_id: int
 ) -> tuple[BambuFilamentsCoordinator, dict[str, Any]]:
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        coordinator = getattr(entry, "runtime_data", None)
-        if isinstance(coordinator, BambuFilamentsCoordinator):
-            if spool := (coordinator.data or {}).get(spool_id):
-                return coordinator, spool
+    for coordinator in _coordinators(hass):
+        if spool := (coordinator.data or {}).get(spool_id):
+            return coordinator, spool
     raise HomeAssistantError(f"Spool {spool_id} not found in any filament library")
 
 
-async def _update_fields(hass: HomeAssistant, spool_id: int, fields: dict[str, Any]) -> None:
-    """PUT the full spool object back with the given fields changed."""
-    coordinator, spool = _find_spool(hass, spool_id)
-    payload = {**spool, **fields}
+async def _cloud_write(
+    hass: HomeAssistant,
+    coordinator: BambuFilamentsCoordinator,
+    func,
+    *args,
+    action: str,
+) -> Any:
+    """Run a blocking cloud write; token expiry starts the reauth flow."""
     try:
-        await hass.async_add_executor_job(coordinator.client.update_spool, payload)
+        return await hass.async_add_executor_job(func, *args)
+    except AuthExpired as err:
+        coordinator.config_entry.async_start_reauth(hass)
+        raise HomeAssistantError(
+            "Bambu cloud token expired - re-authentication started"
+        ) from err
     except BambuCloudError as err:
-        raise HomeAssistantError(f"Bambu cloud rejected the update: {err}") from err
+        raise HomeAssistantError(f"{action}: {err}") from err
+
+
+async def _update_fields(hass: HomeAssistant, spool_id: int, fields: dict[str, Any]) -> None:
+    """PUT only the changed fields (plus the mandatory id + filamentName).
+
+    A minimal body matches what Bambu Studio sends and avoids reverting
+    concurrent cloud-side changes (e.g. AMS weight updates between polls)
+    that a full read-modify-write of the cached spool would write back.
+    """
+    coordinator, spool = _find_spool(hass, spool_id)
+    payload = {
+        "id": spool["id"],
+        "filamentName": spool.get("filamentName") or "",
+        **fields,
+    }
+    await _cloud_write(
+        hass,
+        coordinator,
+        coordinator.client.update_spool,
+        payload,
+        action="Bambu cloud rejected the update",
+    )
     await coordinator.async_request_refresh()
 
 
@@ -77,10 +125,8 @@ def async_register_services(hass: HomeAssistant) -> None:
     """Register domain-level services (idempotent)."""
 
     async def handle_refresh(call: ServiceCall) -> None:
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            coordinator = getattr(entry, "runtime_data", None)
-            if isinstance(coordinator, BambuFilamentsCoordinator):
-                await coordinator.async_request_refresh()
+        for coordinator in _coordinators(hass):
+            await coordinator.async_request_refresh()
 
     async def handle_set_remaining(call: ServiceCall) -> None:
         await _update_fields(
@@ -90,15 +136,8 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def handle_set_note(call: ServiceCall) -> None:
         await _update_fields(hass, call.data["spool_id"], {"note": call.data["note"]})
 
-    def _first_coordinator() -> BambuFilamentsCoordinator:
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            coordinator = getattr(entry, "runtime_data", None)
-            if isinstance(coordinator, BambuFilamentsCoordinator):
-                return coordinator
-        raise HomeAssistantError("No Bambu Filaments account is set up")
-
     async def handle_create_spool(call: ServiceCall) -> None:
-        coordinator = _first_coordinator()
+        coordinator = _first_coordinator(hass)
         total = call.data["total_g"]
         # The create endpoint expects #RRGGBB without alpha (Studio MITM shape);
         # manual entries omit RFID/trayIdName/rolls, and there is no `colors`,
@@ -115,91 +154,82 @@ def async_register_services(hass: HomeAssistant) -> None:
             "totalNetWeight": total,
         }
         filament_id = call.data.get("filament_id")
-        if not filament_id:
-            # Best effort: resolve the canonical filamentId from the catalog -
-            # exact name match first, then vendor + material type.
+        if filament_id is None:
+            # Best effort for official filaments: resolve the canonical id from
+            # the catalog - exact name match first, then vendor + material.
+            # An EXPLICIT empty string means "custom/non-official spool" and
+            # deliberately skips this lookup.
             try:
-                catalog = await hass.async_add_executor_job(
-                    coordinator.client.get_catalog
-                )
-                settings = catalog.get("filamentSettings") or []
-                for item in settings:
-                    if (
-                        item.get("filamentVendor") == payload["filamentVendor"]
-                        and item.get("filamentName") == payload["filamentName"]
-                    ):
-                        filament_id = item.get("filamentId")
-                        break
-                else:
-                    for item in settings:
-                        if (
-                            item.get("filamentVendor") == payload["filamentVendor"]
-                            and item.get("filamentType") == payload["filamentType"]
-                        ):
-                            filament_id = item.get("filamentId")
-                            break
+                catalog = await coordinator.async_get_catalog()
             except BambuCloudError:
-                filament_id = None
+                catalog = []
+            for item in catalog:
+                if (
+                    item["vendor"] == payload["filamentVendor"]
+                    and item["name"] == payload["filamentName"]
+                ):
+                    filament_id = item["filament_id"]
+                    break
+            else:
+                for item in catalog:
+                    if (
+                        item["vendor"] == payload["filamentVendor"]
+                        and item["material"] == payload["filamentType"]
+                    ):
+                        filament_id = item["filament_id"]
+                        break
         # The cloud requires the filamentId FIELD to be present (missing field
-        # -> HTTP 400), but accepts an empty string for custom/third-party
+        # -> HTTP 400) but accepts an empty string for custom/third-party
         # brands - that is how Studio models "non-official" spools.
         payload["filamentId"] = filament_id or ""
         if display_name := call.data.get("display_name"):
             payload["displayName"] = display_name
-        try:
-            await hass.async_add_executor_job(coordinator.client.create_spool, payload)
-        except BambuCloudError as err:
-            raise HomeAssistantError(f"Bambu cloud rejected the new spool: {err}") from err
+        await _cloud_write(
+            hass,
+            coordinator,
+            coordinator.client.create_spool,
+            payload,
+            action="Bambu cloud rejected the new spool",
+        )
+        await coordinator.async_request_refresh()
+
+    async def handle_delete_spool(call: ServiceCall) -> None:
+        coordinator, _spool = _find_spool(hass, call.data["spool_id"])
+        await _cloud_write(
+            hass,
+            coordinator,
+            coordinator.client.delete_spools,
+            [call.data["spool_id"]],
+            action="Deleting the spool failed",
+        )
         await coordinator.async_request_refresh()
 
     async def handle_get_catalog(call: ServiceCall) -> dict[str, Any]:
         """Canonical vendor/product combos the cloud accepts (cached 1 h)."""
-        coordinator = _first_coordinator()
-        cache = getattr(coordinator, "catalog_cache", None)
-        if not cache or time.time() - getattr(coordinator, "catalog_cached_at", 0) > 3600:
-            try:
-                raw = await hass.async_add_executor_job(coordinator.client.get_catalog)
-            except BambuCloudError as err:
-                raise HomeAssistantError(f"Fetching the filament catalog failed: {err}") from err
-            cache = [
-                {
-                    "vendor": e.get("filamentVendor"),
-                    "material": e.get("filamentType"),
-                    "name": e.get("filamentName"),
-                    "filament_id": e.get("filamentId"),
-                }
-                for e in raw.get("filamentSettings") or []
-            ]
-            coordinator.catalog_cache = cache
-            coordinator.catalog_cached_at = time.time()
-        return {"filaments": cache}
-
-    async def handle_delete_spool(call: ServiceCall) -> None:
-        coordinator, _spool = _find_spool(hass, call.data["spool_id"])
+        coordinator = _first_coordinator(hass)
         try:
-            await hass.async_add_executor_job(
-                coordinator.client.delete_spools, [call.data["spool_id"]]
-            )
+            return {"filaments": await coordinator.async_get_catalog()}
         except BambuCloudError as err:
-            raise HomeAssistantError(f"Deleting the spool failed: {err}") from err
-        await coordinator.async_request_refresh()
+            raise HomeAssistantError(f"Fetching the filament catalog failed: {err}") from err
 
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, handle_refresh)
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_REMAINING, handle_set_remaining, schema=SET_REMAINING_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_NOTE, handle_set_note, schema=SET_NOTE_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_CREATE_SPOOL, handle_create_spool, schema=CREATE_SPOOL_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_SPOOL, handle_delete_spool, schema=DELETE_SPOOL_SCHEMA
-    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_CATALOG,
         handle_get_catalog,
         supports_response=SupportsResponse.ONLY,
+    )
+    # Cloud-write services are admin-only: they irreversibly modify the user's
+    # Bambu account (automations without a user context are still allowed).
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_SET_REMAINING, handle_set_remaining, SET_REMAINING_SCHEMA
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_SET_NOTE, handle_set_note, SET_NOTE_SCHEMA
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_CREATE_SPOOL, handle_create_spool, CREATE_SPOOL_SCHEMA
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_DELETE_SPOOL, handle_delete_spool, DELETE_SPOOL_SCHEMA
     )

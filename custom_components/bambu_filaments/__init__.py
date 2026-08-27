@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.loader import async_get_integration
 
 from .api import BambuCloudClient
@@ -30,8 +31,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: BambuFilamentsConfigEntry) -> bool:
     """Set up a Bambu account from a config entry."""
-    integration = await async_get_integration(hass, DOMAIN)
-    await async_setup_frontend(hass, str(integration.version))
+    # Register the card once per HA run - re-registering the static path on
+    # every entry reload would accumulate duplicate routes.
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if not domain_data.get("frontend_registered"):
+        integration = await async_get_integration(hass, DOMAIN)
+        await async_setup_frontend(hass, str(integration.version))
+        domain_data["frontend_registered"] = True
 
     client = BambuCloudClient(entry.data[CONF_REGION], entry.data[CONF_TOKEN])
     colordb = BambuColorDB(hass)
@@ -40,6 +46,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: BambuFilamentsConfigEntr
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
+
+    # Create the hub device before the platforms run, so per-spool devices can
+    # reference it via_device without ordering warnings.
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Bambu Filament Library",
+        manufacturer="Bambu Lab",
+        model="Filament Manager",
+    )
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

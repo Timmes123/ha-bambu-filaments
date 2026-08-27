@@ -25,7 +25,5 @@ COLOR_LANGS = ["auto", "de", "en"]
 
 SERVICE_REFRESH = "refresh"
 
-ATTR_SPOOLS = "spools"
-
 CARD_URL_BASE = "/bambu_filaments_files"
 CARD_FILENAME = "bambu-filaments-card.js"
