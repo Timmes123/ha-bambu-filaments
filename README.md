@@ -131,6 +131,10 @@ show_delete: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
 
+**Adding spools without leaving the dashboard** — the card's "Add spool" button opens a small dialog (vendor and material suggestions come from your own library, color via native color picker). Works for third-party spools that can't self-register via RFID:
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="340" alt="In-card dialog for adding a new spool">
+
 Everything is also configurable in the **visual editor**, including material filter checkboxes generated from your own inventory:
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-editor.png" width="400" alt="Visual card editor">
@@ -155,14 +159,11 @@ Everything is also configurable in the **visual editor**, including material fil
 | `show_code` | `true` | Show Bambu color code and hex |
 | `show_note` | `false` | Show the spool note |
 | `show_delete` | `false` | Trash icon per row (deletes from the cloud after confirmation) |
+| `show_add` | `true` | "Add spool" button that opens an in-card dialog (vendor, material, product line, color picker, weights) — for third-party spools too |
 | `compact` | `false` | Slimmer rows without the meta line |
 | `low_threshold` | `20` | Bar turns red below this % |
 | `warn_threshold` | `50` | Bar turns orange below this % |
 | `max_height` | – | Scroll after this many pixels |
-
-## Roadmap
-
-- Linking library spools to live AMS tray data by RFID.
 
 ## Credits
 

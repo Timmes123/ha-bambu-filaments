@@ -11,6 +11,18 @@ const STR = {
     delete_confirm: (n) => `Delete "${n}" from the Bambu cloud library?`,
     archived: "archived",
     title: "Filament",
+    add_btn: "Add spool",
+    d_title: "New spool",
+    d_vendor: "Vendor",
+    d_material: "Material",
+    d_name: "Product line (e.g. PLA Matte)",
+    d_color: "Color",
+    d_total: "Spool size (g)",
+    d_remaining: "Remaining (g)",
+    d_save: "Add to library",
+    d_cancel: "Cancel",
+    d_saving: "Saving…",
+    d_error: "The cloud rejected the spool. Check material and name.",
     // editor
     e_entity: "Spools sensor (empty = automatic)",
     e_title: "Title",
@@ -29,6 +41,7 @@ const STR = {
     e_show_code: "Show color code and hex",
     e_show_note: "Show note",
     e_show_delete: "Show delete button",
+    e_show_add: "Show add-spool button",
     e_compact: "Compact rows",
     e_low: "Red below (%)",
     e_warn: "Orange below (%)",
@@ -41,6 +54,18 @@ const STR = {
     delete_confirm: (n) => `„${n}" aus der Bambu-Cloud-Bibliothek löschen?`,
     archived: "archiviert",
     title: "Filament",
+    add_btn: "Neue Spule anlegen",
+    d_title: "Neue Spule",
+    d_vendor: "Hersteller",
+    d_material: "Material",
+    d_name: "Sorte (z. B. PLA Matte)",
+    d_color: "Farbe",
+    d_total: "Spulengröße (g)",
+    d_remaining: "Restgewicht (g)",
+    d_save: "Zur Bibliothek hinzufügen",
+    d_cancel: "Abbrechen",
+    d_saving: "Speichern…",
+    d_error: "Die Cloud hat die Spule abgelehnt. Material und Sorte prüfen.",
     e_entity: "Spulen-Sensor (leer = automatisch)",
     e_title: "Titel",
     e_group: "Gruppieren nach", g_line: "Filamentlinie", g_material: "Material", g_none: "Keine Gruppierung",
@@ -58,6 +83,7 @@ const STR = {
     e_show_code: "Farbcode und Hex anzeigen",
     e_show_note: "Notiz anzeigen",
     e_show_delete: "Löschen-Button anzeigen",
+    e_show_add: "Neue-Spule-Button anzeigen",
     e_compact: "Kompakte Zeilen",
     e_low: "Rot unter (%)",
     e_warn: "Orange unter (%)",
@@ -70,6 +96,7 @@ const DEFAULTS = {
   sort: "name",
   combine: false,
   only_in_printer: false,
+  show_add: true,
   show_empty: true,
   show_archived: false,
   show_location: true,
@@ -148,6 +175,7 @@ class BambuFilamentsCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._dialogOpen) return; // don't wipe the form mid-typing
     const entityId = this._config?.entity || findSpoolsEntity(hass);
     const st = entityId ? hass.states[entityId] : null;
     const key = st ? `${entityId}|${st.last_updated}` : "none";
@@ -268,6 +296,7 @@ class BambuFilamentsCard extends HTMLElement {
       }).join("");
     }
 
+    this._lastState = st;
     const scroll = c.max_height ? `style="max-height:${Number(c.max_height)}px;overflow-y:auto"` : "";
     this.shadowRoot.innerHTML = `
       <ha-card>
@@ -276,7 +305,15 @@ class BambuFilamentsCard extends HTMLElement {
           <div class="sum">${t.spools(spools.length)} · ${fmtG(totalG)}</div>
         </div>` : ""}
         <div class="list" ${scroll}>${body}</div>
+        ${c.show_add ? `<div class="addrow"><ha-icon icon="mdi:plus"></ha-icon><span>${t.add_btn}</span></div>` : ""}
+        ${this._dialogOpen ? this._dialogHtml(t, spools) : ""}
       </ha-card>${this._css()}`;
+
+    this.shadowRoot.querySelector(".addrow")?.addEventListener("click", () => {
+      this._dialogOpen = true;
+      this._render(this._lastState);
+    });
+    if (this._dialogOpen) this._wireDialog(t);
 
     this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
       el.addEventListener("click", () => {
@@ -306,6 +343,82 @@ class BambuFilamentsCard extends HTMLElement {
         });
       })
     );
+  }
+
+  _dialogHtml(t, spools) {
+    const vendors = [...new Set(["Bambu Lab", ...spools.map((s) => s.vendor).filter(Boolean)])];
+    const materials = [...new Set([
+      ...spools.map((s) => s.material).filter(Boolean),
+      "PLA", "PETG", "ABS", "ASA", "TPU", "PC", "PA", "PVA", "PLA-CF", "PETG-CF",
+    ])];
+    const opts = (arr) => arr.map((v) => `<option value="${esc(v)}"></option>`).join("");
+    return `
+      <div class="overlay">
+        <div class="dlg">
+          <div class="dtitle">${t.d_title}</div>
+          <label>${t.d_vendor}
+            <input id="f-vendor" type="text" value="Bambu Lab" list="dl-vendors"/>
+            <datalist id="dl-vendors">${opts(vendors)}</datalist></label>
+          <label>${t.d_material}
+            <input id="f-material" type="text" list="dl-mats" placeholder="PLA"/>
+            <datalist id="dl-mats">${opts(materials)}</datalist></label>
+          <label>${t.d_name}<input id="f-name" type="text" placeholder="PLA Matte"/></label>
+          <label class="colorlab">${t.d_color}<input id="f-color" type="color" value="#00ae42"/></label>
+          <div class="cols2">
+            <label>${t.d_total}<input id="f-total" type="number" min="1" value="1000"/></label>
+            <label>${t.d_remaining}<input id="f-remaining" type="number" min="0" placeholder="1000"/></label>
+          </div>
+          <div class="derr" hidden></div>
+          <div class="dbtns">
+            <button class="dlg-cancel">${t.d_cancel}</button>
+            <button class="dlg-save">${t.d_save}</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  _wireDialog(t) {
+    const root = this.shadowRoot;
+    const overlay = root.querySelector(".overlay");
+    const close = () => {
+      this._dialogOpen = false;
+      this._configDirty = true;
+      this._render(this._lastState);
+    };
+    overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
+    root.querySelector(".dlg-cancel").addEventListener("click", close);
+    root.querySelector(".dlg-save").addEventListener("click", async () => {
+      const val = (id) => root.querySelector(`#${id}`).value.trim();
+      const err = root.querySelector(".derr");
+      const material = val("f-material");
+      const name = val("f-name");
+      if (!material || !name) {
+        err.hidden = false;
+        err.textContent = t.d_error;
+        return;
+      }
+      const total = Number(val("f-total")) || 1000;
+      const data = {
+        vendor: val("f-vendor") || "Bambu Lab",
+        material,
+        name,
+        color: val("f-color"),
+        total_g: total,
+        remaining_g: val("f-remaining") === "" ? total : Number(val("f-remaining")),
+      };
+      const btn = root.querySelector(".dlg-save");
+      btn.disabled = true;
+      btn.textContent = t.d_saving;
+      try {
+        await this._hass.callService("bambu_filaments", "create_spool", data);
+        close();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = t.d_save;
+        err.hidden = false;
+        err.textContent = t.d_error;
+      }
+    });
   }
 
   _row(s, t) {
@@ -385,6 +498,36 @@ class BambuFilamentsCard extends HTMLElement {
       .pct { color:var(--secondary-text-color); font-size:0.8em; }
       .del { --mdc-icon-size:20px; color:var(--secondary-text-color); flex:none; }
       .del:hover { color: var(--error-color, #e74c3c); }
+      .addrow { display:flex; align-items:center; justify-content:center; gap:6px;
+                margin:8px 0 4px; padding:8px; border:1px dashed var(--divider-color);
+                border-radius:8px; color:var(--secondary-text-color); cursor:pointer; }
+      .addrow:hover { color:var(--primary-text-color); border-color:var(--secondary-text-color); }
+      .addrow ha-icon { --mdc-icon-size:18px; }
+      .overlay { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.55);
+                 display:flex; align-items:center; justify-content:center; }
+      .dlg { background:var(--card-background-color); border:1px solid var(--divider-color);
+             border-radius:14px; padding:18px; width:min(340px, calc(100vw - 48px));
+             display:flex; flex-direction:column; gap:10px; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+      .dtitle { font-size:1.1em; font-weight:600; }
+      .dlg label { display:flex; flex-direction:column; gap:3px; font-size:0.85em;
+                   color:var(--secondary-text-color); }
+      .dlg label { min-width:0; }
+      .dlg input { box-sizing:border-box; width:100%; }
+      .dlg input[type=text], .dlg input[type=number] {
+        padding:7px 9px; border:1px solid var(--divider-color); border-radius:8px;
+        background:var(--secondary-background-color); color:var(--primary-text-color);
+        font-size:1rem; }
+      .dlg input[type=color] { width:100%; height:38px; padding:2px; border-radius:8px;
+        border:1px solid var(--divider-color); background:var(--secondary-background-color); }
+      .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .derr { color:var(--error-color, #e74c3c); font-size:0.85em; }
+      .dbtns { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+      .dbtns button { padding:8px 14px; border-radius:8px; border:none; cursor:pointer;
+        font-size:0.95em; }
+      .dlg-cancel { background:var(--secondary-background-color);
+        color:var(--primary-text-color); }
+      .dlg-save { background:#00ae42; color:#fff; font-weight:600; }
+      .dlg-save:disabled { opacity:.6; }
     </style>`;
   }
 }
@@ -482,6 +625,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
         ${check("show_code", t.e_show_code)}
         ${check("show_note", t.e_show_note)}
         ${check("show_delete", t.e_show_delete)}
+        ${check("show_add", t.e_show_add)}
         ${check("compact", t.e_compact)}
         <div class="cols">
           <label>${t.e_low}<input type="number" min="0" max="100" data-f="low_threshold" value="${c.low_threshold}"/></label>
