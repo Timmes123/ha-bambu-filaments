@@ -99,6 +99,7 @@ The card finds the spools sensor automatically. All options (also available in t
 | `title` | "Filament" | Card title ("" hides the header) |
 | `group_by` | `line` | `line` (vendor + product), `material`, or `none` |
 | `sort` | `name` | `name`, `remaining_asc`, `remaining_desc` |
+| `combine` | `false` | Merge identical spools (same vendor/product/color) into one ×n row with summed remaining — a color with enough backup spools then no longer counts as low |
 | `show_empty` | `true` | Include spools with 0 g left |
 | `show_archived` | `false` | Include archived/inactive spools |
 | `show_location` | `true` | Show printer/AMS slot for mounted spools |

@@ -16,6 +16,7 @@ const STR = {
     e_title: "Title",
     e_group: "Group by", g_line: "Filament line", g_material: "Material", g_none: "No grouping",
     e_sort: "Sort by", s_name: "Name", s_rem_asc: "Remaining (low first)", s_rem_desc: "Remaining (high first)",
+    e_combine: "Combine identical spools (sum remaining)",
     e_show_empty: "Show empty spools",
     e_show_archived: "Show archived spools",
     e_show_location: "Show printer/AMS location",
@@ -38,6 +39,7 @@ const STR = {
     e_title: "Titel",
     e_group: "Gruppieren nach", g_line: "Filamentlinie", g_material: "Material", g_none: "Keine Gruppierung",
     e_sort: "Sortieren nach", s_name: "Name", s_rem_asc: "Restmenge (wenig zuerst)", s_rem_desc: "Restmenge (viel zuerst)",
+    e_combine: "Gleiche Filamente zusammenfassen (Rest addieren)",
     e_show_empty: "Leere Spulen anzeigen",
     e_show_archived: "Archivierte Spulen anzeigen",
     e_show_location: "Drucker-/AMS-Position anzeigen",
@@ -54,6 +56,7 @@ const STR = {
 const DEFAULTS = {
   group_by: "line",
   sort: "name",
+  combine: false,
   show_empty: true,
   show_archived: false,
   show_location: true,
@@ -81,6 +84,14 @@ function findSpoolsEntity(hass) {
   return null;
 }
 
+function normHex(v) {
+  // The cloud sometimes returns colors without the leading "#" (AMS-created
+  // spools) - normalize before using as CSS or as a combine key.
+  if (!v) return "";
+  v = String(v).trim().toUpperCase();
+  return v.startsWith("#") ? v : `#${v}`;
+}
+
 function fmtG(g) {
   if (g == null) return "?";
   return g >= 10000 ? `${(g / 1000).toFixed(1).replace(/\.0$/, "")} kg` : `${g} g`;
@@ -93,7 +104,8 @@ function esc(s) {
 }
 
 function swatchStyle(spool) {
-  const colors = (spool.colors && spool.colors.length ? spool.colors : [spool.color]).filter(Boolean);
+  const colors = (spool.colors && spool.colors.length ? spool.colors : [spool.color])
+    .filter(Boolean).map(normHex);
   if (!colors.length) return "background:#888";
   if (colors.length === 1) return `background:${esc(colors[0])}`;
   return `background:linear-gradient(135deg, ${esc(colors[0])} 50%, ${esc(colors[1])} 50%)`;
@@ -155,6 +167,9 @@ class BambuFilamentsCard extends HTMLElement {
     const c = this._config;
     let spools = (st.attributes.spools || []).slice();
     if (!c.show_archived) spools = spools.filter((s) => (s.status ?? 0) === 0);
+    if (c.combine) spools = this._combine(spools);
+    // With combine on, the empty filter judges the summed remainder — a color
+    // with enough backup spools no longer shows up as (nearly) empty.
     if (!c.show_empty) spools = spools.filter((s) => (s.remaining_g ?? 0) > 0);
     const name = (s) => `${s.vendor || ""} ${s.name || ""} ${s.color_name || s.color || ""}`;
     const rem = (s) => (s.total_g ? (s.remaining_g ?? 0) / s.total_g : 0);
@@ -162,6 +177,28 @@ class BambuFilamentsCard extends HTMLElement {
     else if (c.sort === "remaining_desc") spools.sort((a, b) => rem(b) - rem(a) || name(a).localeCompare(name(b)));
     else spools.sort((a, b) => name(a).localeCompare(name(b)));
     return spools;
+  }
+
+  _combine(spools) {
+    const map = new Map();
+    for (const s of spools) {
+      const colors = (s.colors && s.colors.length ? s.colors : [s.color]).filter(Boolean);
+      const key = [s.vendor, s.name || s.material, ...colors.map(normHex).sort()].join("|");
+      const agg = map.get(key);
+      if (!agg) {
+        map.set(key, { ...s, _count: 1, _locations: [] });
+      } else {
+        agg._count += 1;
+        agg.remaining_g = (agg.remaining_g || 0) + (s.remaining_g || 0);
+        agg.total_g = (agg.total_g || 0) + (s.total_g || 0);
+        agg.in_printer = agg.in_printer || s.in_printer;
+      }
+      const rec = map.get(key);
+      if (s.in_printer && s.device_name) {
+        rec._locations.push(`${s.device_name}${s.slot_id !== undefined && s.slot_id !== "" ? ` · Slot ${s.slot_id}` : ""}`);
+      }
+    }
+    return [...map.values()];
   }
 
   _groups(spools) {
@@ -229,6 +266,7 @@ class BambuFilamentsCard extends HTMLElement {
     );
     this.shadowRoot.querySelectorAll(".row").forEach((el) =>
       el.addEventListener("click", () => {
+        if (!el.dataset.spool) return; // combined rows have no single spool
         const entityId = this._spoolEntityId(Number(el.dataset.spool));
         if (!entityId) return;
         this.dispatchEvent(new CustomEvent("hass-more-info", {
@@ -256,25 +294,29 @@ class BambuFilamentsCard extends HTMLElement {
       : pct < c.warn_threshold ? "#f39c12"
       : "#00ae42";
     const titleLine = c.group_by === "line"
-      ? (s.color_name || s.color || s.name || "?")
-      : `${s.name || s.material || "?"} ${s.color_name || s.color || ""}`.trim();
+      ? (s.color_name || normHex(s.color).slice(0, 7) || s.name || "?")
+      : `${s.name || s.material || "?"} ${s.color_name || normHex(s.color).slice(0, 7)}`.trim();
+    const combined = (s._count || 1) > 1;
     const meta = [];
     if (c.group_by !== "line" && s.color_name && s.color) meta.push(esc(s.color_name));
     if (c.show_code && s.bambu_color_code) meta.push(esc(s.bambu_color_code));
-    if (c.show_code && s.color) meta.push(esc(String(s.color).slice(0, 7)));
-    if (c.show_location && s.in_printer && s.device_name) {
-      meta.push(`${esc(s.device_name)}${s.slot_id !== undefined && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
+    if (c.show_code && s.color) meta.push(esc(normHex(s.color).slice(0, 7)));
+    if (c.show_location) {
+      if (combined && s._locations?.length) meta.push(s._locations.map(esc).join(", "));
+      else if (s.in_printer && s.device_name) {
+        meta.push(`${esc(s.device_name)}${s.slot_id !== undefined && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
+      }
     }
     if ((s.status ?? 0) !== 0) meta.push(t.archived);
-    if (c.show_note && s.note) meta.push(esc(s.note));
-    const del = c.show_delete
+    if (c.show_note && !combined && s.note) meta.push(esc(s.note));
+    const del = c.show_delete && !combined
       ? `<ha-icon class="del" icon="mdi:delete-outline" data-spool="${s.spool_id}" data-name="${esc(titleLine)}"></ha-icon>`
       : "";
     return `
-      <div class="row ${c.compact ? "compact" : ""}" data-spool="${s.spool_id}">
+      <div class="row ${c.compact ? "compact" : ""}" data-spool="${combined ? "" : s.spool_id}">
         <span class="swatch" style="${swatchStyle(s)}"></span>
         <div class="mid">
-          <div class="rname">${esc(titleLine)}</div>
+          <div class="rname">${esc(titleLine)}${combined ? ` <span class="chip">×${s._count}</span>` : ""}</div>
           ${meta.length && !c.compact ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
           <div class="barbg"><div class="bar" style="width:${pct}%;background:${barColor}"></div></div>
         </div>
@@ -389,6 +431,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
               <option value="remaining_desc" ${c.sort === "remaining_desc" ? "selected" : ""}>${t.s_rem_desc}</option>
             </select></label>
         </div>
+        ${check("combine", t.e_combine)}
         ${check("show_empty", t.e_show_empty)}
         ${check("show_archived", t.e_show_archived)}
         ${check("show_location", t.e_show_location)}
