@@ -11,7 +11,8 @@ Authoritative documents:
 - Research complete: cloud endpoints under `https://api.bambulab.com/v1/design-user-service/my/filament/v2` confirmed.
 - Design agreed: standalone project, write support planned, per-spool entities toggleable via options flow.
 - **Phase 0 PASSED (2026-08-27)**: read AND write verified against the user's real account via `tools/phase0_verify.py` (~34 spools; full-object PUT works; `/filament/config` needs auth despite Studio source comment). Token cache `tools/.bambu_token.json` is local/gitignored.
-- Phase 1 (read-only MVP integration) in development.
+- **Phases 1+2 SHIPPED (2026-08-27)**: repo live at github.com/Timmes123/ha-bambu-filaments, CI (hassfest + HACS action) green on main. Releases: v0.1.0 (read-only MVP) and v0.2.0 (adds `set_remaining`/`set_note` actions), both with `bambu_filaments.zip` asset (zip_release flow). Brand icons in `custom_components/bambu_filaments/brand/` + repo topics were required to pass the HACS action. Import smoke test passed against homeassistant==2026.8.3 in the local `.venv`.
+- **NOT yet done — HACS install on the live HA**: the session's permission classifier blocked HACS write actions (`ha_manage_hacs` and the `hacs/repositories/add` WS command). The user must either approve that permission when asked again, or add the custom repo + install v0.2.0 in the HACS UI themselves. After install: restart HA, then the user adds the integration and logs in with their Bambu account (Claude never handles those credentials). Then verify entities/logs via MCP (read-only).
 - The user's live HA is reachable via MCP; the Bambu printer integration (cloud mode) is installed there, printers: A1 Mini + A2L, each with AMS.
 
 ## Hard rule: deployment only via HACS releases (same as ha-better-todo)
