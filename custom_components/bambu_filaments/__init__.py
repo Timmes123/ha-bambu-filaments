@@ -5,11 +5,14 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
 
 from .api import BambuCloudClient
-from .const import CONF_REGION, CONF_TOKEN
+from .const import CONF_REGION, CONF_TOKEN, DOMAIN
 from .coordinator import BambuFilamentsCoordinator
 from .services import async_register_services
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = [Platform.SENSOR]
 
