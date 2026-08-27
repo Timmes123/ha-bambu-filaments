@@ -319,8 +319,9 @@ class BambuFilamentsCard extends HTMLElement {
       ? (s.color_name || normHex(s.color).slice(0, 7) || s.name || "?")
       : `${s.name || s.material || "?"} ${s.color_name || normHex(s.color).slice(0, 7)}`.trim();
     const combined = (s._count || 1) > 1;
+    // The color name is already part of the title in every grouping mode -
+    // the meta line only carries code/hex/location/note.
     const meta = [];
-    if (c.group_by !== "line" && s.color_name && s.color) meta.push(esc(s.color_name));
     if (c.show_code && s.bambu_color_code) meta.push(esc(s.bambu_color_code));
     if (c.show_code && s.color) meta.push(esc(normHex(s.color).slice(0, 7)));
     if (c.show_location) {

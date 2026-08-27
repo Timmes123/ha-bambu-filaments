@@ -8,6 +8,9 @@ Bring your **Bambu Lab cloud filament library** (the *Filament Manager* introduc
 
 This integration is about your **account-level spool inventory**. It complements (and does not replace) printer integrations that expose live AMS data from the printer itself.
 
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-overview.png" width="480" alt="Bambu Filaments card showing the full spool library grouped by filament line">
+
+
 ## ⚠️ Important disclaimer
 
 - This integration uses an **unofficial, reverse-engineered Bambu Lab cloud API**. It is not affiliated with or endorsed by Bambu Lab, and it **may stop working at any time** if Bambu Lab changes their cloud.
@@ -85,13 +88,54 @@ Open the integration's *Configure* dialog:
 
 ## Dashboard card
 
-The integration ships and auto-registers `custom:bambu-filaments-card`. Minimal config:
+The integration ships and auto-registers `custom:bambu-filaments-card` — no extra install. Minimal config (the card finds the spools sensor automatically):
 
 ```yaml
 type: custom:bambu-filaments-card
 ```
 
-The card finds the spools sensor automatically. All options (also available in the visual editor):
+### Examples
+
+**Full library**, grouped by filament line with per-group totals. `combine: true` merges identical spools into one ×n row with summed remaining weight:
+
+```yaml
+type: custom:bambu-filaments-card
+combine: true
+```
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-combine.png" width="400" alt="Card grouped by filament line with combined spools">
+
+**Low-stock watchlist** — only colors with at most 500 g left across all their spools, emptiest first:
+
+```yaml
+type: custom:bambu-filaments-card
+title: Low stock
+group_by: none
+combine: true
+sort: remaining_asc
+max_remaining_g: 500
+compact: true
+```
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-low-stock.png" width="400" alt="Compact low-stock card filtered to 500 g">
+
+**What's loaded right now** — only spools currently sitting in a printer/AMS, with delete buttons enabled:
+
+```yaml
+type: custom:bambu-filaments-card
+title: Loaded right now
+group_by: none
+only_in_printer: true
+show_delete: true
+```
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
+
+Everything is also configurable in the **visual editor**, including material filter checkboxes generated from your own inventory:
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-editor.png" width="400" alt="Visual card editor">
+
+### All options
 
 | Option | Default | Description |
 |---|---|---|
