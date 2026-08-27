@@ -3,6 +3,7 @@
   "name": "Bambu Filaments",
   "codeowners": ["@Timmes123"],
   "config_flow": true,
+  "dependencies": ["http", "lovelace"],
   "documentation": "https://github.com/Timmes123/ha-bambu-filaments",
   "integration_type": "service",
   "iot_class": "cloud_polling",
