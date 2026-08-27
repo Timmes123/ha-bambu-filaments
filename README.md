@@ -139,7 +139,7 @@ only_in_printer: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="340" alt="In-card dialog for adding a new spool"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-custom.png" width="340" alt="Custom third-party brand mode of the add dialog">
 
-The result in Bambu Studio: the third-party spool appears in the AMS filament picker **under its own brand** and is assignable with the linked profile's print settings — something even Bambu's own apps can't do for custom brands:
+The result in Bambu Studio: the third-party spool appears in the AMS filament picker **under its own brand** and is assignable with the linked profile's print settings — something even Bambu's own apps can't do for custom brands. The spool's **note** shows up there too, as Studio's "remark" line:
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/studio-assign.png" width="700" alt="Bambu Studio AMS dialog listing the custom Flashforge spool under its own brand">
 

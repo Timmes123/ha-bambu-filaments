@@ -42,6 +42,7 @@ with sync_playwright() as pw:
     # open the in-card add dialog and shoot the dialog box itself
     page.locator("#shot-overview .addrow").click()
     page.wait_for_timeout(200)
+    page.locator("#f-color").fill("#4e00ad")  # purple-blue, like a real spool
     page.locator(".dlg").screenshot(path=str(OUT / "card-add-dialog.png"))
     print("saved card-add-dialog.png")
     # switch to custom/third-party mode, fill it like a real Flashforge spool
@@ -53,10 +54,11 @@ with sync_playwright() as pw:
     page.wait_for_timeout(100)
     page.locator(".dlg").screenshot(path=str(OUT / "card-add-custom.png"))
     print("saved card-add-custom.png")
-    # close it and open the edit dialog via a row's cog icon
+    # close it and open the edit dialog for the Flashforge spool (prefilled
+    # custom mode, Generic PLA profile preselected, note filled)
     page.locator(".dlg-cancel").click()
     page.wait_for_timeout(100)
-    page.locator("#shot-overview .edit").first.click()
+    page.locator("#shot-overview .row").filter(has_text="Burnt Titanium").locator(".edit").click()
     page.wait_for_timeout(200)
     page.locator(".dlg").screenshot(path=str(OUT / "card-edit-dialog.png"))
     print("saved card-edit-dialog.png")
