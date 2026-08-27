@@ -7,6 +7,7 @@ remaining-% and a remaining-weight sensor.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -33,6 +34,24 @@ from .const import (
     OPT_SPOOL_ENTITIES,
 )
 from .coordinator import BambuFilamentsCoordinator, spool_is_active, spool_remaining_pct
+
+
+_DATE_RE = re.compile(r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}")
+_TIME_RE = re.compile(r"\d{1,2}:\d{2}")
+
+
+def clean_display_name(spool: dict[str, Any]) -> str | None:
+    """The user-chosen spool name, or None.
+
+    Bambu's apps sometimes auto-fill displayName with a localized creation
+    stamp like "07/29/2026 10:03 hinzugefügt" (AMS bulk-add); Studio's own UI
+    ignores the field entirely for such spools. Anything containing both a
+    date and a time is treated as auto-generated, not a real name.
+    """
+    name = (spool.get("displayName") or "").strip()
+    if not name or (_DATE_RE.search(name) and _TIME_RE.search(name)):
+        return None
+    return name
 
 
 def _spool_colors(spool: dict[str, Any]) -> list[str]:
@@ -69,7 +88,7 @@ def spool_attributes(
         "vendor": spool.get("filamentVendor"),
         "material": spool.get("filamentType"),
         "name": spool.get("filamentName"),
-        "display_name": spool.get("displayName"),
+        "display_name": clean_display_name(spool),
         "filament_id": spool.get("filamentId"),
         "color": spool.get("color"),
         "colors": spool.get("colors"),
@@ -92,7 +111,7 @@ def _spool_display_name(
     spool: dict[str, Any], coordinator: BambuFilamentsCoordinator
 ) -> str:
     # A user-chosen name from Studio/Handy ("displayName") wins outright.
-    if custom := (spool.get("displayName") or "").strip():
+    if custom := clean_display_name(spool):
         return custom
     base = spool.get("filamentName") or spool.get("filamentType") or "Spool"
     color_name, _ = coordinator.color_lookup(spool)
