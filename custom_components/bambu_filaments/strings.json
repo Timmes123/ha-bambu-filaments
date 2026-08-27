@@ -1,0 +1,75 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bambu Lab account",
+        "description": "Sign in with your Bambu Lab account to access your cloud filament library. The password is only sent to Bambu Lab and is not stored.",
+        "data": {
+          "region": "Region",
+          "email": "Email address",
+          "password": "Password"
+        }
+      },
+      "code": {
+        "title": "Verification code",
+        "description": "Bambu Lab sent a verification code to {email}. Enter it here.",
+        "data": {
+          "code": "Verification code"
+        }
+      },
+      "tfa": {
+        "title": "Two-factor authentication",
+        "description": "Enter the code from your authenticator app.",
+        "data": {
+          "code": "2FA code"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Login failed - check email and password.",
+      "code_incorrect": "The code was not accepted - try again.",
+      "cloudflare": "Blocked by Cloudflare bot protection - try again later.",
+      "cannot_connect": "Could not connect to the Bambu cloud."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bambu Filaments options",
+        "data": {
+          "scan_interval": "Polling interval (minutes)",
+          "spool_entities": "Create one sensor per spool",
+          "include_inactive": "Also create sensors for inactive spools"
+        }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "global": "Global",
+        "china": "China"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "spool_count": {
+        "name": "Spools"
+      },
+      "total_remaining": {
+        "name": "Total remaining filament"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Fetch the filament library from the Bambu cloud immediately."
+    }
+  }
+}
