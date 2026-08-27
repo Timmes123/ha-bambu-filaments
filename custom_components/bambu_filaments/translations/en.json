@@ -170,6 +170,10 @@
         "display_name": {
           "name": "Custom name",
           "description": "Optional user-facing spool name shown in Studio, the Bambu app and Home Assistant."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional note; shown as the spool's remark in Bambu Studio (written right after creation - the create endpoint itself has no note field)."
         }
       }
     },

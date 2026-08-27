@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from typing import Any
 
@@ -24,6 +25,8 @@ SERVICE_UPDATE_SPOOL = "update_spool"
 SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
 SERVICE_GET_CATALOG = "get_catalog"
+
+_LOGGER = logging.getLogger(__name__)
 
 # 6-digit hex, optionally with alpha and/or leading '#'.
 COLOR_SCHEMA = vol.All(
@@ -62,6 +65,7 @@ CREATE_SPOOL_SCHEMA = vol.Schema(
         vol.Optional("remaining_g"): vol.All(vol.Coerce(int), vol.Range(min=0, max=20000)),
         vol.Optional("filament_id"): cv.string,
         vol.Optional("display_name"): cv.string,
+        vol.Optional("note"): cv.string,
     }
 )
 DELETE_SPOOL_SCHEMA = vol.Schema({vol.Required("spool_id"): cv.positive_int})
@@ -231,6 +235,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         payload["filamentId"] = filament_id or ""
         if display_name := call.data.get("display_name"):
             payload["displayName"] = display_name
+        known_ids = set((coordinator.data or {}).keys())
         await _cloud_write(
             hass,
             coordinator,
@@ -238,6 +243,36 @@ def async_register_services(hass: HomeAssistant) -> None:
             payload,
             action="Bambu cloud rejected the new spool",
         )
+        if note := call.data.get("note"):
+            # The create endpoint 400s on a note field, so the note is written
+            # with a follow-up PUT onto the just-created spool: re-fetch and
+            # pick the newest matching id we did not know before the create.
+            try:
+                spools = await hass.async_add_executor_job(coordinator.client.get_spools)
+                created = [
+                    s
+                    for s in spools
+                    if isinstance(s.get("id"), int)
+                    and s["id"] not in known_ids
+                    and s.get("filamentVendor") == payload["filamentVendor"]
+                    and s.get("filamentName") == payload["filamentName"]
+                ]
+                if created:
+                    target = max(created, key=lambda s: s["id"])
+                    await hass.async_add_executor_job(
+                        coordinator.client.update_spool,
+                        {
+                            "id": target["id"],
+                            "filamentName": target.get("filamentName") or "",
+                            "note": note,
+                        },
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Spool was created but not found on re-fetch; note not set"
+                    )
+            except BambuCloudError as err:
+                _LOGGER.warning("Spool was created but setting its note failed: %s", err)
         await coordinator.async_request_refresh()
 
     async def handle_update_spool(call: ServiceCall) -> None:

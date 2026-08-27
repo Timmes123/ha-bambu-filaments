@@ -170,6 +170,10 @@
         "display_name": {
           "name": "Eigener Name",
           "description": "Optionaler Anzeigename der Spule in Studio, der Bambu-App und Home Assistant."
+        },
+        "note": {
+          "name": "Notiz",
+          "description": "Optionale Notiz; erscheint in Bambu Studio als Bemerkung der Spule (wird direkt nach dem Anlegen geschrieben - der Create-Endpunkt selbst kennt kein Notizfeld)."
         }
       }
     },

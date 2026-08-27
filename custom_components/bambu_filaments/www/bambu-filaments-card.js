@@ -508,7 +508,7 @@ class BambuFilamentsCard extends HTMLElement {
             <label>${t.d_total}<input id="f-total" type="number" min="1" value="${isEdit ? (spool.total_g ?? 1000) : 1000}"/></label>
             <label>${t.d_remaining}<input id="f-remaining" type="number" min="0" placeholder="1000" value="${isEdit ? (spool.remaining_g ?? "") : ""}"/></label>
           </div>
-          ${isEdit ? `<label>${t.d_note}<input id="f-note" type="text" value="${esc(spool.note || "")}"/></label>` : ""}
+          <label>${t.d_note}<input id="f-note" type="text" value="${isEdit ? esc(spool.note || "") : ""}"/></label>
           <div class="derr" hidden></div>
           <div class="dbtns">
             ${isEdit ? `<button class="dlg-del">${t.d_delete}</button>` : ""}
@@ -618,6 +618,7 @@ class BambuFilamentsCard extends HTMLElement {
       btn.textContent = t.d_saving;
       try {
         if (!isEdit) {
+          if (val("f-note")) data.note = val("f-note");
           await this._hass.callService("bambu_filaments", "create_spool", data);
         } else {
           // Send only the fields that actually changed (minimal PUT, like

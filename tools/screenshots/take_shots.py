@@ -51,6 +51,7 @@ with sync_playwright() as pw:
     page.locator("#f-cmaterial").fill("PLA")
     page.locator("#f-cname").fill("PLA Pro")
     page.locator("#f-display").fill("Burnt Titanium")
+    page.locator("#f-note").fill("Burnt Titanium")
     page.wait_for_timeout(100)
     page.locator(".dlg").screenshot(path=str(OUT / "card-add-custom.png"))
     print("saved card-add-custom.png")

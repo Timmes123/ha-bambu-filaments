@@ -85,7 +85,7 @@ Open the integration's *Configure* dialog:
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
 | `bambu_filaments.set_filament_id` | `spool_id`, `filament_id` | Link a spool to a Bambu slicer profile (e.g. `GFA00` = Bambu PLA Basic, `GFL99` = Generic PLA) so Bambu Studio can assign it with matching print settings; `""` unlinks |
 | `bambu_filaments.update_spool` | `spool_id` + any of `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `note`, `filament_id`, `display_name` | Change fields of an existing spool — only the provided fields are written; empty strings clear custom name/note/profile |
-| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands) |
+| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name`, `note` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands; the note is written right after creation) |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete a spool from the cloud library |
 | `bambu_filaments.get_catalog` | – | Returns the vendor/product combinations the cloud accepts (response data) |
 
