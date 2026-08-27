@@ -20,6 +20,8 @@ const STR = {
     d_custom: "Custom / third-party…",
     d_brand: "Brand (e.g. Flashforge)",
     d_line: "Product line (optional)",
+    d_profile: "Slicer profile (Bambu Studio)",
+    d_profile_none: "No profile (not selectable in Studio)",
     d_display: "Custom name (optional)",
     d_loading: "Loading catalog…",
     d_color: "Color",
@@ -69,6 +71,8 @@ const STR = {
     d_custom: "Benutzerdefiniert / Fremdmarke…",
     d_brand: "Marke (z. B. Flashforge)",
     d_line: "Sorte (optional)",
+    d_profile: "Slicer-Profil (Bambu Studio)",
+    d_profile_none: "Kein Profil (in Studio nicht zuweisbar)",
     d_display: "Eigener Name (optional)",
     d_loading: "Katalog wird geladen…",
     d_color: "Farbe",
@@ -400,6 +404,15 @@ class BambuFilamentsCard extends HTMLElement {
       .filter((f) => f.vendor === vendor)
       .map((f) => `<option value="${esc(f.filament_id)}">${esc(f.name)}${f.name === f.material ? "" : ` (${esc(f.material)})`}</option>`)
       .join("");
+    // Custom-brand spools can still carry an official filamentId so Bambu
+    // Studio finds a slicer profile for them (verified: the cloud stores any
+    // id independently of the free-text vendor). Option values are catalog
+    // indices; the visible list is sorted for scanning.
+    const profileOpts = catalog
+      .map((f, i) => ({ f, i }))
+      .sort((a, b) => `${a.f.vendor} ${a.f.name}`.localeCompare(`${b.f.vendor} ${b.f.name}`))
+      .map(({ f, i }) => `<option value="${i}">${esc(f.vendor)} ${esc(f.name)}${f.name === f.material ? "" : ` (${esc(f.material)})`}</option>`)
+      .join("");
 
     // The dialog lives on document.body: HA's dashboard containers use CSS
     // transforms, which turn position:fixed inside a card into card-relative
@@ -459,6 +472,11 @@ class BambuFilamentsCard extends HTMLElement {
               <input id="f-cmaterial" type="text" list="dl-cmats" placeholder="PLA"/>
               <datalist id="dl-cmats">${[...new Set(catalog.map((f) => f.material).filter(Boolean))].map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist></label>
             <label>${t.d_line}<input id="f-cname" type="text" placeholder="PLA Pro"/></label>
+            <label>${t.d_profile}
+              <select id="f-cprofile">
+                <option value="">${t.d_profile_none}</option>
+                ${profileOpts}
+              </select></label>
           </div>
           ` : `
           <label>${t.d_vendor}<input id="f-vendor" type="text" value="Bambu Lab"/></label>
@@ -497,6 +515,19 @@ class BambuFilamentsCard extends HTMLElement {
           root.querySelector("#f-product").innerHTML = productOpts(ev.target.value);
         }
       });
+      // Default the slicer profile to the matching Generic entry while the
+      // user types the material - until they pick a profile themselves.
+      const profileSel = root.querySelector("#f-cprofile");
+      let profileTouched = false;
+      profileSel.addEventListener("change", () => { profileTouched = true; });
+      root.querySelector("#f-cmaterial").addEventListener("input", (ev) => {
+        if (profileTouched) return;
+        const mat = ev.target.value.trim().toLowerCase();
+        const idx = catalog.findIndex(
+          (f) => f.vendor === "Generic" && (f.material || "").toLowerCase() === mat
+        );
+        profileSel.value = idx >= 0 ? String(idx) : "";
+      });
     }
     root.querySelector(".dlg-save").addEventListener("click", async () => {
       const val = (id) => (root.querySelector(`#${id}`)?.value || "").trim();
@@ -509,12 +540,14 @@ class BambuFilamentsCard extends HTMLElement {
         remaining_g: val("f-remaining") === "" ? total : Number(val("f-remaining")),
       };
       if (catalog.length && val("f-vendor") === "__custom__") {
-        // Custom/third-party brand: free text, sent with an empty filamentId
-        // (the verified way Studio models non-official spools).
+        // Custom/third-party brand: free-text vendor/material/name. The
+        // filamentId is the chosen slicer profile - or "" for "no profile",
+        // the verified way Studio models non-official spools.
         data.vendor = val("f-cvendor");
         data.material = val("f-cmaterial");
         data.name = val("f-cname") || data.material;
-        data.filament_id = "";
+        const pidx = val("f-cprofile");
+        data.filament_id = pidx === "" ? "" : (catalog[Number(pidx)]?.filament_id || "");
         if (!data.vendor || !data.material) {
           err.hidden = false;
           err.textContent = t.d_error;

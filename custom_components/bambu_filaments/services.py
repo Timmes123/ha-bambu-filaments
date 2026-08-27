@@ -19,6 +19,7 @@ from .coordinator import BambuFilamentsCoordinator
 
 SERVICE_SET_REMAINING = "set_remaining"
 SERVICE_SET_NOTE = "set_note"
+SERVICE_SET_FILAMENT_ID = "set_filament_id"
 SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
 SERVICE_GET_CATALOG = "get_catalog"
@@ -38,6 +39,14 @@ SET_NOTE_SCHEMA = vol.Schema(
     {
         vol.Required("spool_id"): cv.positive_int,
         vol.Required("note"): cv.string,
+    }
+)
+SET_FILAMENT_ID_SCHEMA = vol.Schema(
+    {
+        vol.Required("spool_id"): cv.positive_int,
+        # Empty string is meaningful: it clears the profile (Studio's
+        # "non-official spool" state), so no vol.Length guard here.
+        vol.Required("filament_id"): cv.string,
     }
 )
 CREATE_SPOOL_SCHEMA = vol.Schema(
@@ -136,6 +145,16 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def handle_set_note(call: ServiceCall) -> None:
         await _update_fields(hass, call.data["spool_id"], {"note": call.data["note"]})
 
+    async def handle_set_filament_id(call: ServiceCall) -> None:
+        # Verified live: a minimal PUT changes filamentId in place and leaves
+        # vendor/material/displayName/color untouched, so an existing custom
+        # spool can be linked to a Studio slicer profile retroactively.
+        await _update_fields(
+            hass,
+            call.data["spool_id"],
+            {"filamentId": call.data["filament_id"].strip()},
+        )
+
     async def handle_create_spool(call: ServiceCall) -> None:
         coordinator = _first_coordinator(hass)
         total = call.data["total_g"]
@@ -226,6 +245,9 @@ def async_register_services(hass: HomeAssistant) -> None:
     )
     async_register_admin_service(
         hass, DOMAIN, SERVICE_SET_NOTE, handle_set_note, SET_NOTE_SCHEMA
+    )
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_SET_FILAMENT_ID, handle_set_filament_id, SET_FILAMENT_ID_SCHEMA
     )
     async_register_admin_service(
         hass, DOMAIN, SERVICE_CREATE_SPOOL, handle_create_spool, CREATE_SPOOL_SCHEMA

@@ -38,6 +38,22 @@ set_note:
       selector:
         text:
 
+set_filament_id:
+  fields:
+    spool_id:
+      required: true
+      example: 5705646
+      selector:
+        number:
+          min: 1
+          max: 999999999
+          mode: box
+    filament_id:
+      required: true
+      example: "GFA00"
+      selector:
+        text:
+
 create_spool:
   fields:
     vendor:

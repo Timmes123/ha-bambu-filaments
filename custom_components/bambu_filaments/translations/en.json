@@ -121,6 +121,20 @@
         }
       }
     },
+    "set_filament_id": {
+      "name": "Set slicer profile (filament ID)",
+      "description": "Link a spool to a Bambu filament profile so Bambu Studio can assign it with matching print settings (e.g. GFA00 for Bambu PLA Basic, GFL99 for Generic PLA). An empty string unlinks the profile again.",
+      "fields": {
+        "spool_id": {
+          "name": "Spool ID",
+          "description": "The cloud id of the spool (see the spool sensor's spool_id attribute)."
+        },
+        "filament_id": {
+          "name": "Filament ID",
+          "description": "Bambu filament profile id from the catalog (get_catalog action), or empty to unlink."
+        }
+      }
+    },
     "create_spool": {
       "name": "Create spool",
       "description": "Add a new spool to the Bambu cloud filament library (appears in Studio and the Bambu app too).",

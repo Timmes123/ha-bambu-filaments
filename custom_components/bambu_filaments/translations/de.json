@@ -121,6 +121,20 @@
         }
       }
     },
+    "set_filament_id": {
+      "name": "Slicer-Profil setzen (Filament-ID)",
+      "description": "Verknüpft eine Spule mit einem Bambu-Filamentprofil, damit Bambu Studio sie mit passenden Druckeinstellungen zuweisen kann (z. B. GFA00 für Bambu PLA Basic, GFL99 für Generic PLA). Ein leerer Text entfernt die Verknüpfung wieder.",
+      "fields": {
+        "spool_id": {
+          "name": "Spulen-ID",
+          "description": "Die Cloud-ID der Spule (siehe Attribut spool_id des Spulen-Sensors)."
+        },
+        "filament_id": {
+          "name": "Filament-ID",
+          "description": "Bambu-Profil-ID aus dem Katalog (Aktion get_catalog), oder leer zum Entfernen."
+        }
+      }
+    },
     "create_spool": {
       "name": "Spule anlegen",
       "description": "Neue Spule in der Bambu-Cloud-Filamentbibliothek anlegen (erscheint auch in Studio und der Bambu-App).",

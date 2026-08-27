@@ -83,11 +83,12 @@ Open the integration's *Configure* dialog:
 | `bambu_filaments.refresh` | – | Re-fetch the library from the cloud now |
 | `bambu_filaments.set_remaining` | `spool_id`, `remaining_g` | Set a spool's remaining filament weight (grams) |
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
+| `bambu_filaments.set_filament_id` | `spool_id`, `filament_id` | Link a spool to a Bambu slicer profile (e.g. `GFA00` = Bambu PLA Basic, `GFL99` = Generic PLA) so Bambu Studio can assign it with matching print settings; `""` unlinks |
 | `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands) |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete a spool from the cloud library |
 | `bambu_filaments.get_catalog` | – | Returns the vendor/product combinations the cloud accepts (response data) |
 
-`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list. The cloud-write actions (`set_remaining`, `set_note`, `create_spool`, `delete_spool`) are **admin-only** — they irreversibly modify your Bambu account (automations are unaffected).
+`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list. The cloud-write actions (`set_remaining`, `set_note`, `set_filament_id`, `create_spool`, `delete_spool`) are **admin-only** — they irreversibly modify your Bambu account (automations are unaffected).
 
 ## Dashboard card
 
@@ -134,7 +135,7 @@ show_delete: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
 
-**Adding spools without leaving the dashboard** — the card's "Add spool" button opens a small dialog with vendor/filament dropdowns fed by the official cloud catalog, a native color picker, and an optional custom display name. Picking **"Custom / third-party…"** unlocks free-text brand and material — so a *Flashforge PLA Burnt Titanium* can be registered with its real brand name, which even the official Bambu apps don't offer:
+**Adding spools without leaving the dashboard** — the card's "Add spool" button opens a small dialog with vendor/filament dropdowns fed by the official cloud catalog, a native color picker, and an optional custom display name. Picking **"Custom / third-party…"** unlocks free-text brand and material — so a *Flashforge PLA Burnt Titanium* can be registered with its real brand name, which even the official Bambu apps don't offer. A **slicer profile** dropdown links the custom spool to an official Bambu filament profile (defaults to the matching Generic one), so Bambu Studio can assign the spool with sensible print settings; without a profile Studio treats the spool as unsupported:
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="340" alt="In-card dialog for adding a new spool"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-custom.png" width="340" alt="Custom third-party brand mode of the add dialog">
 
