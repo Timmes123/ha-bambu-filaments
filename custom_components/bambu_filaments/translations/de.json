@@ -70,6 +70,34 @@
     "refresh": {
       "name": "Aktualisieren",
       "description": "Die Filamentbibliothek sofort aus der Bambu-Cloud abrufen."
+    },
+    "set_remaining": {
+      "name": "Restgewicht setzen",
+      "description": "Das Restgewicht einer Spule in der Cloud-Bibliothek setzen.",
+      "fields": {
+        "spool_id": {
+          "name": "Spulen-ID",
+          "description": "Die Cloud-ID der Spule (siehe Attribut spool_id des Spulen-Sensors)."
+        },
+        "remaining_g": {
+          "name": "Restgewicht",
+          "description": "Neues Filament-Restgewicht in Gramm (ohne die Spule selbst)."
+        }
+      }
+    },
+    "set_note": {
+      "name": "Notiz setzen",
+      "description": "Die Notiz einer Spule in der Cloud-Bibliothek setzen.",
+      "fields": {
+        "spool_id": {
+          "name": "Spulen-ID",
+          "description": "Die Cloud-ID der Spule (siehe Attribut spool_id des Spulen-Sensors)."
+        },
+        "note": {
+          "name": "Notiz",
+          "description": "Der neue Notiztext."
+        }
+      }
     }
   }
 }

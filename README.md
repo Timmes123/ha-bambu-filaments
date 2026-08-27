@@ -20,6 +20,7 @@ This integration is about your **account-level spool inventory**. It complements
 - **Spool sensors** — one sensor per spool in your library (optional, on by default): state is remaining %, attributes include remaining/total grams, material, color hex, vendor, status, notes, and where the spool is currently mounted (printer/AMS/slot).
 - **Aggregate sensors** — number of active spools (with the full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Options** — polling interval, per-spool entities on/off, include inactive spools.
+- **Write actions** — `bambu_filaments.set_remaining` (update a spool's remaining grams) and `bambu_filaments.set_note` (edit a spool's note); changes appear in Bambu Studio and Handy.
 - **`bambu_filaments.refresh` action** — pull the library from the cloud on demand.
 - Full config flow with email-code and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
 
@@ -54,9 +55,19 @@ Open the integration's *Configure* dialog:
 
 **Where does my password go?** Only to Bambu Lab's login endpoint, exactly like logging in from Bambu Studio. Home Assistant stores the resulting token, never the password.
 
+## Actions
+
+| Action | Fields | Effect |
+|---|---|---|
+| `bambu_filaments.refresh` | – | Re-fetch the library from the cloud now |
+| `bambu_filaments.set_remaining` | `spool_id`, `remaining_g` | Set a spool's remaining filament weight (grams) |
+| `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
+
+`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool sensor and in the aggregate sensor's spool list.
+
 ## Roadmap
 
-- Write support: adjust remaining weight, edit notes/status, create and archive spools from Home Assistant.
+- Creating and archiving spools from Home Assistant.
 - Linking library spools to live AMS tray data by RFID.
 - A dedicated dashboard card.
 

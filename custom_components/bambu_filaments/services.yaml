@@ -1,2 +1,39 @@
 refresh:
   fields: {}
+
+set_remaining:
+  fields:
+    spool_id:
+      required: true
+      example: 5705646
+      selector:
+        number:
+          min: 1
+          max: 999999999
+          mode: box
+    remaining_g:
+      required: true
+      example: 750
+      selector:
+        number:
+          min: 0
+          max: 20000
+          step: 1
+          unit_of_measurement: g
+          mode: box
+
+set_note:
+  fields:
+    spool_id:
+      required: true
+      example: 5705646
+      selector:
+        number:
+          min: 1
+          max: 999999999
+          mode: box
+    note:
+      required: true
+      example: "Opened 2026-08, stored in drybox"
+      selector:
+        text:

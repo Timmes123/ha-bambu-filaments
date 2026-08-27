@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant
 
 from .api import BambuCloudClient
-from .const import CONF_REGION, CONF_TOKEN, DOMAIN, SERVICE_REFRESH
+from .const import CONF_REGION, CONF_TOKEN
 from .coordinator import BambuFilamentsCoordinator
+from .services import async_register_services
 
 PLATFORMS = [Platform.SENSOR]
 
@@ -17,13 +18,7 @@ type BambuFilamentsConfigEntry = ConfigEntry[BambuFilamentsCoordinator]
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register domain-level services."""
-
-    async def handle_refresh(call: ServiceCall) -> None:
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            if isinstance(getattr(entry, "runtime_data", None), BambuFilamentsCoordinator):
-                await entry.runtime_data.async_request_refresh()
-
-    hass.services.async_register(DOMAIN, SERVICE_REFRESH, handle_refresh)
+    async_register_services(hass)
     return True
 
 

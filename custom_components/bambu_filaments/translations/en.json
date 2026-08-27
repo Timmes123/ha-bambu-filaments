@@ -70,6 +70,34 @@
     "refresh": {
       "name": "Refresh",
       "description": "Fetch the filament library from the Bambu cloud immediately."
+    },
+    "set_remaining": {
+      "name": "Set remaining weight",
+      "description": "Set the remaining filament weight of a spool in the cloud library.",
+      "fields": {
+        "spool_id": {
+          "name": "Spool ID",
+          "description": "The cloud id of the spool (see the spool sensor's spool_id attribute)."
+        },
+        "remaining_g": {
+          "name": "Remaining weight",
+          "description": "New remaining filament weight in grams (without the spool itself)."
+        }
+      }
+    },
+    "set_note": {
+      "name": "Set note",
+      "description": "Set the note of a spool in the cloud library.",
+      "fields": {
+        "spool_id": {
+          "name": "Spool ID",
+          "description": "The cloud id of the spool (see the spool sensor's spool_id attribute)."
+        },
+        "note": {
+          "name": "Note",
+          "description": "The new note text."
+        }
+      }
     }
   }
 }
