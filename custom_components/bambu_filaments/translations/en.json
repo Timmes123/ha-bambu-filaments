@@ -44,8 +44,9 @@
         "title": "Bambu Filaments options",
         "data": {
           "scan_interval": "Polling interval (minutes)",
-          "spool_entities": "Create one sensor per spool",
-          "include_inactive": "Also create sensors for inactive spools"
+          "spool_entities": "Create one device per spool",
+          "include_inactive": "Also create devices for inactive spools",
+          "color_language": "Color name language"
         }
       }
     }
@@ -55,6 +56,13 @@
       "options": {
         "global": "Global",
         "china": "China"
+      }
+    },
+    "color_language": {
+      "options": {
+        "auto": "Automatic (HA language)",
+        "de": "German (falls back to English for untranslated colors)",
+        "en": "English"
       }
     }
   },

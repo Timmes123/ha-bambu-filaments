@@ -45,7 +45,8 @@
         "data": {
           "scan_interval": "Abrufintervall (Minuten)",
           "spool_entities": "Ein Gerät pro Spule anlegen",
-          "include_inactive": "Auch Geräte für inaktive Spulen anlegen"
+          "include_inactive": "Auch Geräte für inaktive Spulen anlegen",
+          "color_language": "Sprache der Farbnamen"
         }
       }
     }
@@ -55,6 +56,13 @@
       "options": {
         "global": "Global",
         "china": "China"
+      }
+    },
+    "color_language": {
+      "options": {
+        "auto": "Automatisch (HA-Sprache)",
+        "de": "Deutsch (nicht übersetzte Farben englisch)",
+        "en": "Englisch"
       }
     }
   },

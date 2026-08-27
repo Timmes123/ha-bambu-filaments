@@ -22,7 +22,8 @@ This integration is about your **account-level spool inventory**. It complements
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Bidirectional sync** — spools added or removed in Bambu Studio/Handy appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear in Studio/Handy.
 - **Write actions** — `set_remaining`, `set_note`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
-- **Options** — polling interval, per-spool devices on/off, include inactive spools.
+- **Dashboard card** — a `custom:bambu-filaments-card` shipped with the integration (auto-registered, no extra install): spool list in the style of Bambu Studio's Filament Manager with color swatches, remaining bars and per-group totals; configurable grouping (filament line/material/none), sorting, compact mode, thresholds, optional delete buttons — with a full UI editor.
+- **Options** — polling interval, per-spool devices on/off, include inactive spools, color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
 - Full config flow with email-code (incl. resend) and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
 
 ## Installation (HACS)
@@ -77,10 +78,36 @@ Open the integration's *Configure* dialog:
 
 `spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list.
 
+## Dashboard card
+
+The integration ships and auto-registers `custom:bambu-filaments-card`. Minimal config:
+
+```yaml
+type: custom:bambu-filaments-card
+```
+
+The card finds the spools sensor automatically. All options (also available in the visual editor):
+
+| Option | Default | Description |
+|---|---|---|
+| `entity` | auto | The aggregate spools sensor |
+| `title` | "Filament" | Card title ("" hides the header) |
+| `group_by` | `line` | `line` (vendor + product), `material`, or `none` |
+| `sort` | `name` | `name`, `remaining_asc`, `remaining_desc` |
+| `show_empty` | `true` | Include spools with 0 g left |
+| `show_archived` | `false` | Include archived/inactive spools |
+| `show_location` | `true` | Show printer/AMS slot for mounted spools |
+| `show_code` | `true` | Show Bambu color code and hex |
+| `show_note` | `false` | Show the spool note |
+| `show_delete` | `false` | Trash icon per row (deletes from the cloud after confirmation) |
+| `compact` | `false` | Slimmer rows without the meta line |
+| `low_threshold` | `20` | Bar turns red below this % |
+| `warn_threshold` | `50` | Bar turns orange below this % |
+| `max_height` | – | Scroll after this many pixels |
+
 ## Roadmap
 
 - Linking library spools to live AMS tray data by RFID.
-- A dedicated dashboard card.
 
 ## Credits
 

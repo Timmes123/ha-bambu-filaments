@@ -33,13 +33,16 @@ from .api import (
     TfaRequired,
 )
 from .const import (
+    COLOR_LANGS,
     CONF_EMAIL,
     CONF_REGION,
     CONF_TOKEN,
+    DEFAULT_COLOR_LANG,
     DEFAULT_INCLUDE_INACTIVE,
     DEFAULT_SCAN_INTERVAL_MIN,
     DEFAULT_SPOOL_ENTITIES,
     DOMAIN,
+    OPT_COLOR_LANG,
     OPT_INCLUDE_INACTIVE,
     OPT_SCAN_INTERVAL,
     OPT_SPOOL_ENTITIES,
@@ -221,6 +224,16 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
                     OPT_INCLUDE_INACTIVE,
                     default=options.get(OPT_INCLUDE_INACTIVE, DEFAULT_INCLUDE_INACTIVE),
                 ): bool,
+                vol.Required(
+                    OPT_COLOR_LANG,
+                    default=options.get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=COLOR_LANGS,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        translation_key="color_language",
+                    )
+                ),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

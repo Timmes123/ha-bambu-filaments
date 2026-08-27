@@ -13,7 +13,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import AuthExpired, BambuCloudClient, BambuCloudError
 from .colors import BambuColorDB
-from .const import DEFAULT_SCAN_INTERVAL_MIN, DOMAIN, OPT_SCAN_INTERVAL
+from .const import (
+    DEFAULT_COLOR_LANG,
+    DEFAULT_SCAN_INTERVAL_MIN,
+    DOMAIN,
+    OPT_COLOR_LANG,
+    OPT_SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,9 +62,10 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
     def color_lookup(self, spool: dict[str, Any]) -> tuple[str | None, str | None]:
         """Localized official color name + Bambu color code for a spool."""
         colors = [c for c in (spool.get("colors") or [spool.get("color")]) if c]
-        return self.colordb.lookup(
-            spool.get("filamentId"), colors, self.hass.config.language
-        )
+        lang = (self.config_entry.options or {}).get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG)
+        if lang == "auto":
+            lang = self.hass.config.language
+        return self.colordb.lookup(spool.get("filamentId"), colors, lang)
 
     async def _async_update_data(self) -> dict[int, dict[str, Any]]:
         try:

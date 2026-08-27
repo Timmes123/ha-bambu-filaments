@@ -6,11 +6,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
+from homeassistant.loader import async_get_integration
 
 from .api import BambuCloudClient
 from .colors import BambuColorDB
 from .const import CONF_REGION, CONF_TOKEN, DOMAIN
 from .coordinator import BambuFilamentsCoordinator
+from .frontend import async_setup_frontend
 from .services import async_register_services
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -28,6 +30,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: BambuFilamentsConfigEntry) -> bool:
     """Set up a Bambu account from a config entry."""
+    integration = await async_get_integration(hass, DOMAIN)
+    await async_setup_frontend(hass, str(integration.version))
+
     client = BambuCloudClient(entry.data[CONF_REGION], entry.data[CONF_TOKEN])
     colordb = BambuColorDB(hass)
     await colordb.async_load()
