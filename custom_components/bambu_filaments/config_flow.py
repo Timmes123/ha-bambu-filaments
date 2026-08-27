@@ -125,25 +125,38 @@ class BambuFilamentsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_code(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """A verification code was emailed/texted to the user."""
+        """Bambu emailed/texted a verification code during the login attempt."""
         errors: dict[str, str] = {}
         if user_input is not None:
             assert self._client
+            code = (user_input.get("code") or "").strip()
             try:
-                await self.hass.async_add_executor_job(
-                    self._client.login_with_code, self._email, user_input["code"].strip()
-                )
+                if user_input.get("resend"):
+                    await self.hass.async_add_executor_job(
+                        self._client.request_code, self._email
+                    )
+                    errors["base"] = "code_resent"
+                elif not code:
+                    errors["base"] = "code_incorrect"
+                else:
+                    await self.hass.async_add_executor_job(
+                        self._client.login_with_code, self._email, code
+                    )
+                    return await self._async_finish()
             except CodeIncorrect:
                 errors["base"] = "code_incorrect"
             except CloudflareBlocked:
                 errors["base"] = "cloudflare"
             except BambuCloudError:
                 errors["base"] = "cannot_connect"
-            else:
-                return await self._async_finish()
         return self.async_show_form(
             step_id="code",
-            data_schema=vol.Schema({vol.Required("code"): str}),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("code", default=""): str,
+                    vol.Optional("resend", default=False): bool,
+                }
+            ),
             errors=errors,
             description_placeholders={"email": self._email},
         )

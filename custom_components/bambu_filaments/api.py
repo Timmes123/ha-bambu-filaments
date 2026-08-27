@@ -106,8 +106,9 @@ class BambuCloudClient:
             self.token = token
             return token
         login_type = data.get("loginType")
-        if login_type == "verifyCode" or not login_type:
-            self.request_code(email)
+        if login_type == "verifyCode":
+            # Bambu already emails a code as part of this login attempt -
+            # do NOT request another one here or the user gets two emails.
             raise EmailCodeRequired
         if login_type == "tfa":
             raise TfaRequired(data.get("tfaKey", ""))
@@ -192,3 +193,21 @@ class BambuCloudClient:
         if response.status_code != 200:
             raise BambuCloudError(f"Updating spool failed (HTTP {response.status_code})")
         return response.json()
+
+    def create_spool(self, spool: dict[str, Any]) -> None:
+        """Create a spool. The API returns an empty body; re-fetch to see it."""
+        response = self._request(
+            "post", f"{self._api}/v1/design-user-service/my/filament/v2", body=spool
+        )
+        if response.status_code != 200:
+            raise BambuCloudError(f"Creating spool failed (HTTP {response.status_code})")
+
+    def delete_spools(self, spool_ids: list[int]) -> None:
+        """Delete spools by cloud id (idempotent on the server side)."""
+        response = self._request(
+            "delete",
+            f"{self._api}/v1/design-user-service/my/filament/v2/batch",
+            body={"ids": spool_ids},
+        )
+        if response.status_code != 200:
+            raise BambuCloudError(f"Deleting spools failed (HTTP {response.status_code})")

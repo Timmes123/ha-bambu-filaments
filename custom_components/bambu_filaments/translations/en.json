@@ -12,9 +12,10 @@
       },
       "code": {
         "title": "Verification code",
-        "description": "Bambu Lab sent a verification code to {email}. Enter it here.",
+        "description": "Bambu Lab sent a verification code to {email}. Enter it here. If it did not arrive, leave the field empty and enable \"Request new code\".",
         "data": {
-          "code": "Verification code"
+          "code": "Verification code",
+          "resend": "Request new code"
         }
       },
       "tfa": {
@@ -28,6 +29,7 @@
     "error": {
       "invalid_auth": "Login failed - check email and password.",
       "code_incorrect": "The code was not accepted - try again.",
+      "code_resent": "A new code was sent - check your inbox and enter it above.",
       "cloudflare": "Blocked by Cloudflare bot protection - try again later.",
       "cannot_connect": "Could not connect to the Bambu cloud."
     },
@@ -63,6 +65,17 @@
       },
       "total_remaining": {
         "name": "Total remaining filament"
+      },
+      "spool_remaining_pct": {
+        "name": "Remaining"
+      },
+      "spool_remaining_g": {
+        "name": "Remaining weight"
+      }
+    },
+    "button": {
+      "delete_spool": {
+        "name": "Delete from Bambu Cloud"
       }
     }
   },
@@ -96,6 +109,50 @@
         "note": {
           "name": "Note",
           "description": "The new note text."
+        }
+      }
+    },
+    "create_spool": {
+      "name": "Create spool",
+      "description": "Add a new spool to the Bambu cloud filament library (appears in Studio/Handy too).",
+      "fields": {
+        "vendor": {
+          "name": "Vendor",
+          "description": "Filament vendor/brand."
+        },
+        "material": {
+          "name": "Material",
+          "description": "Material type, e.g. PLA or PETG."
+        },
+        "name": {
+          "name": "Filament name",
+          "description": "Product line name, e.g. PLA Matte."
+        },
+        "color": {
+          "name": "Color",
+          "description": "Hex color, e.g. #FF6A13."
+        },
+        "total_g": {
+          "name": "Spool size",
+          "description": "Full-spool filament weight in grams."
+        },
+        "remaining_g": {
+          "name": "Remaining weight",
+          "description": "Current remaining grams (defaults to the spool size)."
+        },
+        "filament_id": {
+          "name": "Filament ID",
+          "description": "Optional Bambu filament id (e.g. GFA01); resolved automatically for official filaments."
+        }
+      }
+    },
+    "delete_spool": {
+      "name": "Delete spool",
+      "description": "Delete a spool from the Bambu cloud filament library.",
+      "fields": {
+        "spool_id": {
+          "name": "Spool ID",
+          "description": "The cloud id of the spool to delete."
         }
       }
     }

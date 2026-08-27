@@ -17,12 +17,13 @@ This integration is about your **account-level spool inventory**. It complements
 
 ## Features
 
-- **Spool sensors** — one sensor per spool in your library (optional, on by default): state is remaining %, attributes include remaining/total grams, material, color hex, vendor, status, notes, and where the spool is currently mounted (printer/AMS/slot).
-- **Aggregate sensors** — number of active spools (with the full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
-- **Options** — polling interval, per-spool entities on/off, include inactive spools.
-- **Write actions** — `bambu_filaments.set_remaining` (update a spool's remaining grams) and `bambu_filaments.set_note` (edit a spool's note); changes appear in Bambu Studio and Handy.
-- **`bambu_filaments.refresh` action** — pull the library from the cloud on demand.
-- Full config flow with email-code and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
+- **One device per spool** (optional, on by default) named with the official webshop color (e.g. *PETG HF Waldgrün*), carrying a remaining-% sensor (with a color-swatch entity picture and full details as attributes), a remaining-weight sensor, and a **Delete from Bambu Cloud** button.
+- **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
+- **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
+- **Bidirectional sync** — spools added or removed in Bambu Studio/Handy appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear in Studio/Handy.
+- **Write actions** — `set_remaining`, `set_note`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
+- **Options** — polling interval, per-spool devices on/off, include inactive spools.
+- Full config flow with email-code (incl. resend) and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
 
 ## Installation (HACS)
 
@@ -31,13 +32,22 @@ This integration is about your **account-level spool inventory**. It complements
 3. Go to *Settings → Devices & services → Add integration* and search for **Bambu Filaments**.
 4. Sign in with your Bambu Lab account (region, email, password). If Bambu sends you a verification code by email, enter it when prompted.
 
-## Entities
+## Devices & entities
+
+**Hub device "Bambu Filament Library":**
 
 | Entity | State | Notes |
 |---|---|---|
-| `sensor.bambu_filament_library_spools` | Number of active spools | Attributes: full spool list, remaining grams per material |
-| `sensor.bambu_filament_library_total_remaining_filament` | Total remaining grams | Active spools only |
-| `sensor.…_<spool>` (per spool) | Remaining % | Attributes: remaining/total g, material, color, vendor, RFID-backed id, mount location |
+| `sensor.…_spools` | Number of active spools | Attributes: full spool list, remaining grams per material |
+| `sensor.…_total_remaining_filament` | Total remaining grams | Active spools only |
+
+**Per spool device** (e.g. *PLA Matte Charcoal*, linked to the hub):
+
+| Entity | State/Action | Notes |
+|---|---|---|
+| Remaining | Remaining % | Color-swatch picture; attributes: remaining/total g, material, color hex + official color name/code, vendor, status, note, mount location |
+| Remaining weight | Remaining grams | |
+| Delete from Bambu Cloud | Button | Deletes the spool in the cloud; the device disappears on the next sync |
 
 ## Options
 
@@ -62,12 +72,13 @@ Open the integration's *Configure* dialog:
 | `bambu_filaments.refresh` | – | Re-fetch the library from the cloud now |
 | `bambu_filaments.set_remaining` | `spool_id`, `remaining_g` | Set a spool's remaining filament weight (grams) |
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
+| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id` | Add a new spool to the cloud library |
+| `bambu_filaments.delete_spool` | `spool_id` | Delete a spool from the cloud library |
 
-`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool sensor and in the aggregate sensor's spool list.
+`spool_id` is the cloud id of the spool — shown as the `spool_id` attribute on every spool remaining sensor and in the aggregate sensor's spool list.
 
 ## Roadmap
 
-- Creating and archiving spools from Home Assistant.
 - Linking library spools to live AMS tray data by RFID.
 - A dedicated dashboard card.
 

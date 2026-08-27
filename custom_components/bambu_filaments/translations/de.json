@@ -12,9 +12,10 @@
       },
       "code": {
         "title": "Bestätigungscode",
-        "description": "Bambu Lab hat einen Bestätigungscode an {email} gesendet. Gib ihn hier ein.",
+        "description": "Bambu Lab hat einen Bestätigungscode an {email} gesendet. Gib ihn hier ein. Falls keiner ankam: Feld leer lassen und „Neuen Code anfordern\" aktivieren.",
         "data": {
-          "code": "Bestätigungscode"
+          "code": "Bestätigungscode",
+          "resend": "Neuen Code anfordern"
         }
       },
       "tfa": {
@@ -28,6 +29,7 @@
     "error": {
       "invalid_auth": "Anmeldung fehlgeschlagen – E-Mail und Passwort prüfen.",
       "code_incorrect": "Der Code wurde nicht akzeptiert – bitte erneut versuchen.",
+      "code_resent": "Ein neuer Code wurde gesendet – Posteingang prüfen und oben eingeben.",
       "cloudflare": "Von Cloudflare-Bot-Schutz blockiert – später erneut versuchen.",
       "cannot_connect": "Verbindung zur Bambu-Cloud fehlgeschlagen."
     },
@@ -42,8 +44,8 @@
         "title": "Bambu-Filaments-Optionen",
         "data": {
           "scan_interval": "Abrufintervall (Minuten)",
-          "spool_entities": "Einen Sensor pro Spule anlegen",
-          "include_inactive": "Auch Sensoren für inaktive Spulen anlegen"
+          "spool_entities": "Ein Gerät pro Spule anlegen",
+          "include_inactive": "Auch Geräte für inaktive Spulen anlegen"
         }
       }
     }
@@ -63,6 +65,17 @@
       },
       "total_remaining": {
         "name": "Filament-Restmenge gesamt"
+      },
+      "spool_remaining_pct": {
+        "name": "Restmenge"
+      },
+      "spool_remaining_g": {
+        "name": "Restgewicht"
+      }
+    },
+    "button": {
+      "delete_spool": {
+        "name": "Aus Bambu-Cloud löschen"
       }
     }
   },
@@ -96,6 +109,50 @@
         "note": {
           "name": "Notiz",
           "description": "Der neue Notiztext."
+        }
+      }
+    },
+    "create_spool": {
+      "name": "Spule anlegen",
+      "description": "Neue Spule in der Bambu-Cloud-Filamentbibliothek anlegen (erscheint auch in Studio/Handy).",
+      "fields": {
+        "vendor": {
+          "name": "Hersteller",
+          "description": "Filament-Hersteller/Marke."
+        },
+        "material": {
+          "name": "Material",
+          "description": "Materialtyp, z. B. PLA oder PETG."
+        },
+        "name": {
+          "name": "Filamentname",
+          "description": "Produktlinie, z. B. PLA Matte."
+        },
+        "color": {
+          "name": "Farbe",
+          "description": "Hex-Farbe, z. B. #FF6A13."
+        },
+        "total_g": {
+          "name": "Spulengröße",
+          "description": "Filamentgewicht der vollen Spule in Gramm."
+        },
+        "remaining_g": {
+          "name": "Restgewicht",
+          "description": "Aktuelles Restgewicht in Gramm (Standard: Spulengröße)."
+        },
+        "filament_id": {
+          "name": "Filament-ID",
+          "description": "Optionale Bambu-Filament-ID (z. B. GFA01); wird für offizielle Filamente automatisch ermittelt."
+        }
+      }
+    },
+    "delete_spool": {
+      "name": "Spule löschen",
+      "description": "Eine Spule aus der Bambu-Cloud-Filamentbibliothek löschen.",
+      "fields": {
+        "spool_id": {
+          "name": "Spulen-ID",
+          "description": "Die Cloud-ID der zu löschenden Spule."
         }
       }
     }

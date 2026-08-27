@@ -37,3 +37,62 @@ set_note:
       example: "Opened 2026-08, stored in drybox"
       selector:
         text:
+
+create_spool:
+  fields:
+    vendor:
+      required: false
+      default: "Bambu Lab"
+      example: "Bambu Lab"
+      selector:
+        text:
+    material:
+      required: true
+      example: "PLA"
+      selector:
+        text:
+    name:
+      required: true
+      example: "PLA Matte"
+      selector:
+        text:
+    color:
+      required: true
+      example: "#FF6A13"
+      selector:
+        text:
+    total_g:
+      required: false
+      default: 1000
+      selector:
+        number:
+          min: 1
+          max: 20000
+          step: 1
+          unit_of_measurement: g
+          mode: box
+    remaining_g:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 20000
+          step: 1
+          unit_of_measurement: g
+          mode: box
+    filament_id:
+      required: false
+      example: "GFA01"
+      selector:
+        text:
+
+delete_spool:
+  fields:
+    spool_id:
+      required: true
+      example: 5705646
+      selector:
+        number:
+          min: 1
+          max: 999999999
+          mode: box

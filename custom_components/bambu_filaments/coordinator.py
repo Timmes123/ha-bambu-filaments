@@ -12,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AuthExpired, BambuCloudClient, BambuCloudError
+from .colors import BambuColorDB
 from .const import DEFAULT_SCAN_INTERVAL_MIN, DOMAIN, OPT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,7 +35,13 @@ def spool_remaining_pct(spool: dict[str, Any]) -> int:
 class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]):
     """Polls the cloud filament inventory. Data is a dict keyed by spool id."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: BambuCloudClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        client: BambuCloudClient,
+        colordb: BambuColorDB,
+    ) -> None:
         minutes = entry.options.get(OPT_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MIN)
         super().__init__(
             hass,
@@ -44,6 +51,14 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             update_interval=timedelta(minutes=minutes),
         )
         self.client = client
+        self.colordb = colordb
+
+    def color_lookup(self, spool: dict[str, Any]) -> tuple[str | None, str | None]:
+        """Localized official color name + Bambu color code for a spool."""
+        colors = [c for c in (spool.get("colors") or [spool.get("color")]) if c]
+        return self.colordb.lookup(
+            spool.get("filamentId"), colors, self.hass.config.language
+        )
 
     async def _async_update_data(self) -> dict[int, dict[str, Any]]:
         try:
