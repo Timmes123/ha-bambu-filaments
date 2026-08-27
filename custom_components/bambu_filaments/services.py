@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.helpers.config_validation as cv
 
@@ -19,6 +20,7 @@ SERVICE_SET_REMAINING = "set_remaining"
 SERVICE_SET_NOTE = "set_note"
 SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
+SERVICE_GET_CATALOG = "get_catalog"
 
 SET_REMAINING_SCHEMA = vol.Schema(
     {
@@ -43,6 +45,7 @@ CREATE_SPOOL_SCHEMA = vol.Schema(
         ),
         vol.Optional("remaining_g"): vol.All(vol.Coerce(int), vol.Range(min=0, max=20000)),
         vol.Optional("filament_id"): cv.string,
+        vol.Optional("display_name"): cv.string,
     }
 )
 DELETE_SPOOL_SCHEMA = vol.Schema({vol.Required("spool_id"): cv.positive_int})
@@ -139,11 +142,35 @@ def async_register_services(hass: HomeAssistant) -> None:
                 filament_id = None
         if filament_id:
             payload["filamentId"] = filament_id
+        if display_name := call.data.get("display_name"):
+            payload["displayName"] = display_name
         try:
             await hass.async_add_executor_job(coordinator.client.create_spool, payload)
         except BambuCloudError as err:
             raise HomeAssistantError(f"Bambu cloud rejected the new spool: {err}") from err
         await coordinator.async_request_refresh()
+
+    async def handle_get_catalog(call: ServiceCall) -> dict[str, Any]:
+        """Canonical vendor/product combos the cloud accepts (cached 1 h)."""
+        coordinator = _first_coordinator()
+        cache = getattr(coordinator, "catalog_cache", None)
+        if not cache or time.time() - getattr(coordinator, "catalog_cached_at", 0) > 3600:
+            try:
+                raw = await hass.async_add_executor_job(coordinator.client.get_catalog)
+            except BambuCloudError as err:
+                raise HomeAssistantError(f"Fetching the filament catalog failed: {err}") from err
+            cache = [
+                {
+                    "vendor": e.get("filamentVendor"),
+                    "material": e.get("filamentType"),
+                    "name": e.get("filamentName"),
+                    "filament_id": e.get("filamentId"),
+                }
+                for e in raw.get("filamentSettings") or []
+            ]
+            coordinator.catalog_cache = cache
+            coordinator.catalog_cached_at = time.time()
+        return {"filaments": cache}
 
     async def handle_delete_spool(call: ServiceCall) -> None:
         coordinator, _spool = _find_spool(hass, call.data["spool_id"])
@@ -167,4 +194,10 @@ def async_register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_DELETE_SPOOL, handle_delete_spool, schema=DELETE_SPOOL_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_CATALOG,
+        handle_get_catalog,
+        supports_response=SupportsResponse.ONLY,
     )

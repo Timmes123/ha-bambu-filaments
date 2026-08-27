@@ -85,6 +85,14 @@ create_spool:
       example: "GFA01"
       selector:
         text:
+    display_name:
+      required: false
+      example: "Burnt Titanium"
+      selector:
+        text:
+
+get_catalog:
+  fields: {}
 
 delete_spool:
   fields:

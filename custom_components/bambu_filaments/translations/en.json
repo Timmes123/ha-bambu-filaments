@@ -151,8 +151,16 @@
         "filament_id": {
           "name": "Filament ID",
           "description": "Optional Bambu filament id (e.g. GFA01); resolved automatically for official filaments."
+        },
+        "display_name": {
+          "name": "Custom name",
+          "description": "Optional user-facing spool name shown in Studio/Handy and Home Assistant."
         }
       }
+    },
+    "get_catalog": {
+      "name": "Get filament catalog",
+      "description": "Returns the vendor/product combinations the Bambu cloud accepts when creating spools."
     },
     "delete_spool": {
       "name": "Delete spool",

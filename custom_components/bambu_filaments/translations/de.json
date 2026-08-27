@@ -151,8 +151,16 @@
         "filament_id": {
           "name": "Filament-ID",
           "description": "Optionale Bambu-Filament-ID (z. B. GFA01); wird für offizielle Filamente automatisch ermittelt."
+        },
+        "display_name": {
+          "name": "Eigener Name",
+          "description": "Optionaler Anzeigename der Spule in Studio/Handy und Home Assistant."
         }
       }
+    },
+    "get_catalog": {
+      "name": "Filament-Katalog abrufen",
+      "description": "Liefert die Hersteller/Produkt-Kombinationen, die die Bambu-Cloud beim Anlegen von Spulen akzeptiert."
     },
     "delete_spool": {
       "name": "Spule löschen",

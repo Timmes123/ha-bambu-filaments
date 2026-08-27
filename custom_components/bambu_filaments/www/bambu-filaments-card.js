@@ -16,6 +16,9 @@ const STR = {
     d_vendor: "Vendor",
     d_material: "Material",
     d_name: "Product line (e.g. PLA Matte)",
+    d_product: "Filament",
+    d_display: "Custom name (optional)",
+    d_loading: "Loading catalog…",
     d_color: "Color",
     d_total: "Spool size (g)",
     d_remaining: "Remaining (g)",
@@ -59,6 +62,9 @@ const STR = {
     d_vendor: "Hersteller",
     d_material: "Material",
     d_name: "Sorte (z. B. PLA Matte)",
+    d_product: "Filament",
+    d_display: "Eigener Name (optional)",
+    d_loading: "Katalog wird geladen…",
     d_color: "Farbe",
     d_total: "Spulengröße (g)",
     d_remaining: "Restgewicht (g)",
@@ -238,7 +244,8 @@ class BambuFilamentsCard extends HTMLElement {
     const map = new Map();
     for (const s of spools) {
       const colors = (s.colors && s.colors.length ? s.colors : [s.color]).filter(Boolean);
-      const key = [s.vendor, s.name || s.material, ...colors.map(normHex).sort()].join("|");
+      const key = [s.vendor, s.name || s.material, s.display_name || "",
+        ...colors.map(normHex).sort()].join("|");
       const agg = map.get(key);
       if (!agg) {
         map.set(key, { ...s, _count: 1, _locations: [] });
@@ -347,14 +354,25 @@ class BambuFilamentsCard extends HTMLElement {
     );
   }
 
-  _openDialog(t, spools) {
+  async _openDialog(t, spools) {
     if (this._dialogHost) return;
-    const vendors = [...new Set(["Bambu Lab", ...spools.map((s) => s.vendor).filter(Boolean)])];
-    const materials = [...new Set([
-      ...spools.map((s) => s.material).filter(Boolean),
-      "PLA", "PETG", "ABS", "ASA", "TPU", "PC", "PA", "PVA", "PLA-CF", "PETG-CF",
-    ])];
-    const opts = (arr) => arr.map((v) => `<option value="${esc(v)}"></option>`).join("");
+    // The cloud only accepts vendor/product combos from its official catalog
+    // (free text is rejected with HTTP 400), so the dialog uses dropdowns fed
+    // by the get_catalog action - exactly like the Handy app.
+    let catalog = [];
+    try {
+      const resp = await this._hass.callService(
+        "bambu_filaments", "get_catalog", {}, undefined, false, true
+      );
+      catalog = resp?.response?.filaments || [];
+    } catch (e) {
+      catalog = [];
+    }
+    const vendors = [...new Set(catalog.map((f) => f.vendor).filter(Boolean))];
+    const productOpts = (vendor, selected) => catalog
+      .filter((f) => f.vendor === vendor)
+      .map((f, i) => `<option value="${esc(f.filament_id)}" ${f.filament_id === selected ? "selected" : ""}>${esc(f.name)}${f.name === f.material ? "" : ` (${esc(f.material)})`}</option>`)
+      .join("");
 
     // The dialog lives on document.body: HA's dashboard containers use CSS
     // transforms, which turn position:fixed inside a card into card-relative
@@ -377,10 +395,11 @@ class BambuFilamentsCard extends HTMLElement {
         label { display:flex; flex-direction:column; gap:3px; font-size:0.85em;
                 color:var(--secondary-text-color, #9aa1ad); min-width:0; }
         input { box-sizing:border-box; width:100%; }
-        input[type=text], input[type=number] {
+        input[type=text], input[type=number], select {
           padding:7px 9px; border:1px solid var(--divider-color, rgba(255,255,255,.12));
           border-radius:8px; background:var(--secondary-background-color, #2b313c);
           color:var(--primary-text-color, #e3e5ea); font-size:1rem; }
+        select { box-sizing:border-box; width:100%; }
         input[type=color] { width:100%; height:38px; padding:2px; border-radius:8px;
           border:1px solid var(--divider-color, rgba(255,255,255,.12));
           background:var(--secondary-background-color, #2b313c); }
@@ -397,13 +416,17 @@ class BambuFilamentsCard extends HTMLElement {
       <div class="overlay">
         <div class="dlg">
           <div class="dtitle">${t.d_title}</div>
+          ${catalog.length ? `
           <label>${t.d_vendor}
-            <input id="f-vendor" type="text" value="Bambu Lab" list="dl-vendors"/>
-            <datalist id="dl-vendors">${opts(vendors)}</datalist></label>
-          <label>${t.d_material}
-            <input id="f-material" type="text" list="dl-mats" placeholder="PLA"/>
-            <datalist id="dl-mats">${opts(materials)}</datalist></label>
+            <select id="f-vendor">${vendors.map((v) => `<option ${v === "Bambu Lab" ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+          <label>${t.d_product}
+            <select id="f-product">${productOpts("Bambu Lab")}</select></label>
+          ` : `
+          <label>${t.d_vendor}<input id="f-vendor" type="text" value="Bambu Lab"/></label>
+          <label>${t.d_material}<input id="f-material" type="text" placeholder="PLA"/></label>
           <label>${t.d_name}<input id="f-name" type="text" placeholder="PLA Matte"/></label>
+          `}
+          <label>${t.d_display}<input id="f-display" type="text" placeholder="Burnt Titanium"/></label>
           <label class="colorlab">${t.d_color}<input id="f-color" type="color" value="#00ae42"/></label>
           <div class="cols2">
             <label>${t.d_total}<input id="f-total" type="number" min="1" value="1000"/></label>
@@ -426,25 +449,41 @@ class BambuFilamentsCard extends HTMLElement {
     };
     overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
     root.querySelector(".dlg-cancel").addEventListener("click", close);
+    if (catalog.length) {
+      root.querySelector("#f-vendor").addEventListener("change", (ev) => {
+        root.querySelector("#f-product").innerHTML = productOpts(ev.target.value);
+      });
+    }
     root.querySelector(".dlg-save").addEventListener("click", async () => {
-      const val = (id) => root.querySelector(`#${id}`).value.trim();
+      const val = (id) => (root.querySelector(`#${id}`)?.value || "").trim();
       const err = root.querySelector(".derr");
-      const material = val("f-material");
-      const name = val("f-name");
-      if (!material || !name) {
-        err.hidden = false;
-        err.textContent = t.d_error;
-        return;
-      }
       const total = Number(val("f-total")) || 1000;
       const data = {
         vendor: val("f-vendor") || "Bambu Lab",
-        material,
-        name,
         color: val("f-color"),
         total_g: total,
         remaining_g: val("f-remaining") === "" ? total : Number(val("f-remaining")),
       };
+      if (catalog.length) {
+        const entry = catalog.find((f) => f.filament_id === val("f-product"));
+        if (!entry) {
+          err.hidden = false;
+          err.textContent = t.d_error;
+          return;
+        }
+        data.material = entry.material;
+        data.name = entry.name;
+        data.filament_id = entry.filament_id;
+      } else {
+        data.material = val("f-material");
+        data.name = val("f-name");
+        if (!data.material || !data.name) {
+          err.hidden = false;
+          err.textContent = t.d_error;
+          return;
+        }
+      }
+      if (val("f-display")) data.display_name = val("f-display");
       const btn = root.querySelector(".dlg-save");
       btn.disabled = true;
       btn.textContent = t.d_saving;
@@ -467,9 +506,10 @@ class BambuFilamentsCard extends HTMLElement {
       : pct < c.low_threshold ? "var(--error-color, #e74c3c)"
       : pct < c.warn_threshold ? "#f39c12"
       : "#00ae42";
-    const titleLine = c.group_by === "line"
+    const custom = (s.display_name || "").trim();
+    const titleLine = custom || (c.group_by === "line"
       ? (s.color_name || normHex(s.color).slice(0, 7) || s.name || "?")
-      : `${s.name || s.material || "?"} ${s.color_name || normHex(s.color).slice(0, 7)}`.trim();
+      : `${s.name || s.material || "?"} ${s.color_name || normHex(s.color).slice(0, 7)}`.trim());
     const combined = (s._count || 1) > 1;
     // The color name is already part of the title in every grouping mode -
     // the meta line only carries code/hex/location/note.

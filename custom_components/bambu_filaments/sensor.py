@@ -69,6 +69,7 @@ def spool_attributes(
         "vendor": spool.get("filamentVendor"),
         "material": spool.get("filamentType"),
         "name": spool.get("filamentName"),
+        "display_name": spool.get("displayName"),
         "filament_id": spool.get("filamentId"),
         "color": spool.get("color"),
         "colors": spool.get("colors"),
@@ -90,6 +91,9 @@ def spool_attributes(
 def _spool_display_name(
     spool: dict[str, Any], coordinator: BambuFilamentsCoordinator
 ) -> str:
+    # A user-chosen name from Studio/Handy ("displayName") wins outright.
+    if custom := (spool.get("displayName") or "").strip():
+        return custom
     base = spool.get("filamentName") or spool.get("filamentType") or "Spool"
     color_name, _ = coordinator.color_lookup(spool)
     if color_name:
