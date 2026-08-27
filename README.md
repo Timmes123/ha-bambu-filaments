@@ -100,6 +100,11 @@ The card finds the spools sensor automatically. All options (also available in t
 | `group_by` | `line` | `line` (vendor + product), `material`, or `none` |
 | `sort` | `name` | `name`, `remaining_asc`, `remaining_desc` |
 | `combine` | `false` | Merge identical spools (same vendor/product/color) into one ×n row with summed remaining — a color with enough backup spools then no longer counts as low |
+| `max_remaining_g` | – | Filter: only show entries with at most this many grams left |
+| `max_remaining_pct` | – | Filter: only show entries at or below this remaining % |
+| `materials` | – | Filter: list of materials to include (e.g. `[PLA, PETG]`) |
+| `only_in_printer` | `false` | Filter: only spools currently loaded in a printer/AMS |
+| `max_items` | – | Cap the number of rows after sorting (top-N list) |
 | `show_empty` | `true` | Include spools with 0 g left |
 | `show_archived` | `false` | Include archived/inactive spools |
 | `show_location` | `true` | Show printer/AMS slot for mounted spools |

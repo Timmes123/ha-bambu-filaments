@@ -17,6 +17,12 @@ const STR = {
     e_group: "Group by", g_line: "Filament line", g_material: "Material", g_none: "No grouping",
     e_sort: "Sort by", s_name: "Name", s_rem_asc: "Remaining (low first)", s_rem_desc: "Remaining (high first)",
     e_combine: "Combine identical spools (sum remaining)",
+    e_filters: "Filters",
+    e_max_g: "Only show below (g, empty = off)",
+    e_max_pct: "Only show below (%, empty = off)",
+    e_materials: "Materials (none checked = all)",
+    e_only_printer: "Only spools loaded in a printer/AMS",
+    e_max_items: "Max. rows (empty = all)",
     e_show_empty: "Show empty spools",
     e_show_archived: "Show archived spools",
     e_show_location: "Show printer/AMS location",
@@ -40,6 +46,12 @@ const STR = {
     e_group: "Gruppieren nach", g_line: "Filamentlinie", g_material: "Material", g_none: "Keine Gruppierung",
     e_sort: "Sortieren nach", s_name: "Name", s_rem_asc: "Restmenge (wenig zuerst)", s_rem_desc: "Restmenge (viel zuerst)",
     e_combine: "Gleiche Filamente zusammenfassen (Rest addieren)",
+    e_filters: "Filter",
+    e_max_g: "Nur anzeigen unter (g, leer = aus)",
+    e_max_pct: "Nur anzeigen unter (%, leer = aus)",
+    e_materials: "Materialien (nichts angehakt = alle)",
+    e_only_printer: "Nur eingelegte Spulen (Drucker/AMS)",
+    e_max_items: "Max. Zeilen (leer = alle)",
     e_show_empty: "Leere Spulen anzeigen",
     e_show_archived: "Archivierte Spulen anzeigen",
     e_show_location: "Drucker-/AMS-Position anzeigen",
@@ -57,6 +69,7 @@ const DEFAULTS = {
   group_by: "line",
   sort: "name",
   combine: false,
+  only_in_printer: false,
   show_empty: true,
   show_archived: false,
   show_location: true,
@@ -171,11 +184,20 @@ class BambuFilamentsCard extends HTMLElement {
     // With combine on, the empty filter judges the summed remainder — a color
     // with enough backup spools no longer shows up as (nearly) empty.
     if (!c.show_empty) spools = spools.filter((s) => (s.remaining_g ?? 0) > 0);
+    if (c.only_in_printer) spools = spools.filter((s) => s.in_printer);
+    if (Array.isArray(c.materials) && c.materials.length) {
+      spools = spools.filter((s) => c.materials.includes(s.material));
+    }
+    if (c.max_remaining_g != null) spools = spools.filter((s) => (s.remaining_g ?? 0) <= Number(c.max_remaining_g));
+    if (c.max_remaining_pct != null) {
+      spools = spools.filter((s) => (s.total_g ? (s.remaining_g ?? 0) / s.total_g * 100 : 0) <= Number(c.max_remaining_pct));
+    }
     const name = (s) => `${s.vendor || ""} ${s.name || ""} ${s.color_name || s.color || ""}`;
     const rem = (s) => (s.total_g ? (s.remaining_g ?? 0) / s.total_g : 0);
     if (c.sort === "remaining_asc") spools.sort((a, b) => rem(a) - rem(b) || name(a).localeCompare(name(b)));
     else if (c.sort === "remaining_desc") spools.sort((a, b) => rem(b) - rem(a) || name(a).localeCompare(name(b)));
     else spools.sort((a, b) => name(a).localeCompare(name(b)));
+    if (c.max_items) spools = spools.slice(0, Number(c.max_items));
     return spools;
   }
 
@@ -402,6 +424,13 @@ class BambuFilamentsCardEditor extends HTMLElement {
     const c = this._config;
     const check = (f, label) => `
       <label class="chk"><input type="checkbox" data-f="${f}" ${c[f] ? "checked" : ""}/> ${label}</label>`;
+    const stEntity = c.entity || (this._hass ? findSpoolsEntity(this._hass) : null);
+    const st = stEntity ? this._hass?.states?.[stEntity] : null;
+    const materials = [...new Set(((st?.attributes?.spools) || [])
+      .map((s) => s.material).filter(Boolean))].sort();
+    const selectedMats = c.materials || [];
+    const matBoxes = materials.map((m) => `
+      <label class="chk"><input type="checkbox" data-mat="${esc(m)}" ${selectedMats.includes(m) ? "checked" : ""}/> ${esc(m)}</label>`).join("");
     this.shadowRoot.innerHTML = `
       <style>
         .form { display:flex; flex-direction:column; gap:10px; padding:4px 0; }
@@ -413,6 +442,9 @@ class BambuFilamentsCardEditor extends HTMLElement {
           padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px;
           background: var(--card-background-color); color: var(--primary-text-color); }
         .cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .sect { font-weight:600; margin-top:6px; border-bottom:1px solid var(--divider-color);
+                padding-bottom:2px; color: var(--primary-text-color); }
+        .mats { display:flex; flex-wrap:wrap; gap:4px 14px; }
       </style>
       <div class="form">
         <label>${t.e_entity}<input type="text" data-f="entity" value="${esc(c.entity || "")}"/></label>
@@ -432,6 +464,17 @@ class BambuFilamentsCardEditor extends HTMLElement {
             </select></label>
         </div>
         ${check("combine", t.e_combine)}
+        <div class="sect">${t.e_filters}</div>
+        <div class="cols">
+          <label>${t.e_max_g}<input type="number" min="0" data-f="max_remaining_g" value="${c.max_remaining_g ?? ""}"/></label>
+          <label>${t.e_max_pct}<input type="number" min="0" max="100" data-f="max_remaining_pct" value="${c.max_remaining_pct ?? ""}"/></label>
+        </div>
+        <div class="cols">
+          <label>${t.e_max_items}<input type="number" min="1" data-f="max_items" value="${c.max_items ?? ""}"/></label>
+        </div>
+        ${check("only_in_printer", t.e_only_printer)}
+        ${materials.length ? `<label>${t.e_materials}</label><div class="mats">${matBoxes}</div>` : ""}
+        <div class="sect"></div>
         ${check("show_empty", t.e_show_empty)}
         ${check("show_archived", t.e_show_archived)}
         ${check("show_location", t.e_show_location)}
@@ -445,6 +488,15 @@ class BambuFilamentsCardEditor extends HTMLElement {
         </div>
         <label>${t.e_max_height}<input type="number" min="100" data-f="max_height" value="${c.max_height || ""}"/></label>
       </div>`;
+    this.shadowRoot.querySelectorAll("[data-mat]").forEach((el) =>
+      el.addEventListener("change", () => {
+        const checked = [...this.shadowRoot.querySelectorAll("[data-mat]")]
+          .filter((x) => x.checked).map((x) => x.dataset.mat);
+        if (checked.length) this._config.materials = checked;
+        else delete this._config.materials;
+        this._fire();
+      })
+    );
     this.shadowRoot.querySelectorAll("[data-f]").forEach((el) =>
       el.addEventListener("change", () => {
         const f = el.dataset.f;
