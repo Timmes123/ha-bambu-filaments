@@ -17,6 +17,9 @@ const STR = {
     d_material: "Material",
     d_name: "Product line (e.g. PLA Matte)",
     d_product: "Filament",
+    d_custom: "Custom / third-party…",
+    d_brand: "Brand (e.g. Flashforge)",
+    d_line: "Product line (optional)",
     d_display: "Custom name (optional)",
     d_loading: "Loading catalog…",
     d_color: "Color",
@@ -63,6 +66,9 @@ const STR = {
     d_material: "Material",
     d_name: "Sorte (z. B. PLA Matte)",
     d_product: "Filament",
+    d_custom: "Benutzerdefiniert / Fremdmarke…",
+    d_brand: "Marke (z. B. Flashforge)",
+    d_line: "Sorte (optional)",
     d_display: "Eigener Name (optional)",
     d_loading: "Katalog wird geladen…",
     d_color: "Farbe",
@@ -400,6 +406,8 @@ class BambuFilamentsCard extends HTMLElement {
           border-radius:8px; background:var(--secondary-background-color, #2b313c);
           color:var(--primary-text-color, #e3e5ea); font-size:1rem; }
         select { box-sizing:border-box; width:100%; }
+        #row-custom { display:flex; flex-direction:column; gap:10px; }
+        [hidden] { display:none !important; }
         input[type=color] { width:100%; height:38px; padding:2px; border-radius:8px;
           border:1px solid var(--divider-color, rgba(255,255,255,.12));
           background:var(--secondary-background-color, #2b313c); }
@@ -418,9 +426,19 @@ class BambuFilamentsCard extends HTMLElement {
           <div class="dtitle">${t.d_title}</div>
           ${catalog.length ? `
           <label>${t.d_vendor}
-            <select id="f-vendor">${vendors.map((v) => `<option ${v === "Bambu Lab" ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
-          <label>${t.d_product}
+            <select id="f-vendor">
+              ${vendors.map((v) => `<option ${v === "Bambu Lab" ? "selected" : ""}>${esc(v)}</option>`).join("")}
+              <option value="__custom__">${t.d_custom}</option>
+            </select></label>
+          <label id="row-product">${t.d_product}
             <select id="f-product">${productOpts("Bambu Lab")}</select></label>
+          <div id="row-custom" hidden>
+            <label>${t.d_brand}<input id="f-cvendor" type="text" placeholder="Flashforge"/></label>
+            <label>${t.d_material}
+              <input id="f-cmaterial" type="text" list="dl-cmats" placeholder="PLA"/>
+              <datalist id="dl-cmats">${[...new Set(catalog.map((f) => f.material).filter(Boolean))].map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist></label>
+            <label>${t.d_line}<input id="f-cname" type="text" placeholder="PLA Pro"/></label>
+          </div>
           ` : `
           <label>${t.d_vendor}<input id="f-vendor" type="text" value="Bambu Lab"/></label>
           <label>${t.d_material}<input id="f-material" type="text" placeholder="PLA"/></label>
@@ -451,7 +469,12 @@ class BambuFilamentsCard extends HTMLElement {
     root.querySelector(".dlg-cancel").addEventListener("click", close);
     if (catalog.length) {
       root.querySelector("#f-vendor").addEventListener("change", (ev) => {
-        root.querySelector("#f-product").innerHTML = productOpts(ev.target.value);
+        const isCustom = ev.target.value === "__custom__";
+        root.querySelector("#row-product").hidden = isCustom;
+        root.querySelector("#row-custom").hidden = !isCustom;
+        if (!isCustom) {
+          root.querySelector("#f-product").innerHTML = productOpts(ev.target.value);
+        }
       });
     }
     root.querySelector(".dlg-save").addEventListener("click", async () => {
@@ -464,7 +487,19 @@ class BambuFilamentsCard extends HTMLElement {
         total_g: total,
         remaining_g: val("f-remaining") === "" ? total : Number(val("f-remaining")),
       };
-      if (catalog.length) {
+      if (catalog.length && val("f-vendor") === "__custom__") {
+        // Custom/third-party brand: free text, sent with an empty filamentId
+        // (the verified way Studio models non-official spools).
+        data.vendor = val("f-cvendor");
+        data.material = val("f-cmaterial");
+        data.name = val("f-cname") || data.material;
+        data.filament_id = "";
+        if (!data.vendor || !data.material) {
+          err.hidden = false;
+          err.textContent = t.d_error;
+          return;
+        }
+      } else if (catalog.length) {
         const entry = catalog.find((f) => f.filament_id === val("f-product"));
         if (!entry) {
           err.hidden = false;

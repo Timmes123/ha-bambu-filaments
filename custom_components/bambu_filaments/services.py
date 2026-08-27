@@ -140,8 +140,10 @@ def async_register_services(hass: HomeAssistant) -> None:
                             break
             except BambuCloudError:
                 filament_id = None
-        if filament_id:
-            payload["filamentId"] = filament_id
+        # The cloud requires the filamentId FIELD to be present (missing field
+        # -> HTTP 400), but accepts an empty string for custom/third-party
+        # brands - that is how Studio models "non-official" spools.
+        payload["filamentId"] = filament_id or ""
         if display_name := call.data.get("display_name"):
             payload["displayName"] = display_name
         try:
