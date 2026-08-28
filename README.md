@@ -2,7 +2,7 @@
 
 [![Validate](https://github.com/Timmes123/ha-bambu-filaments/actions/workflows/validate.yml/badge.svg)](https://github.com/Timmes123/ha-bambu-filaments/actions/workflows/validate.yml)
 [![GitHub release](https://img.shields.io/github/v/release/Timmes123/ha-bambu-filaments)](https://github.com/Timmes123/ha-bambu-filaments/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Timmes123/ha-bambu-filaments/blob/main/LICENSE)
 [![Community Forum](https://img.shields.io/badge/community-forum-41BDF5.svg?logo=homeassistant&logoColor=white)](https://community.home-assistant.io/t/bambu-filaments-your-bambu-lab-cloud-filament-library-spools-colors-remaining-weight-in-ha/1022849)
 
 Bring your **Bambu Lab cloud filament library** (the *Filament Manager* introduced in Bambu Studio 2.6.1+ and the Bambu app) into Home Assistant: every spool in your account — vendor, material, color, remaining weight — as sensors you can automate on.
@@ -187,4 +187,4 @@ Built on the community's documentation of the Bambu cloud API, in particular [Op
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/Timmes123/ha-bambu-filaments/blob/main/LICENSE)
