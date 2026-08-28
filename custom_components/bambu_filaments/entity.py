@@ -20,13 +20,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .colors import normalize_hex
 from .const import (
-    DEFAULT_INCLUDE_INACTIVE,
     DEFAULT_SPOOL_ENTITIES,
     DOMAIN,
-    OPT_INCLUDE_INACTIVE,
     OPT_SPOOL_ENTITIES,
 )
-from .coordinator import BambuFilamentsCoordinator, spool_is_active
+from .coordinator import BambuFilamentsCoordinator
 
 _DATE_RE = re.compile(r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}")
 _TIME_RE = re.compile(r"\d{1,2}:\d{2}")
@@ -127,17 +125,11 @@ def async_setup_spool_platform(
         sync_spool_devices(hass, entry, coordinator, keep=set())
         return
 
-    include_inactive = entry.options.get(OPT_INCLUDE_INACTIVE, DEFAULT_INCLUDE_INACTIVE)
     known: set[int] = set()
 
     @callback
     def _sync() -> None:
-        data = coordinator.data or {}
-        wanted = {
-            sid
-            for sid, spool in data.items()
-            if include_inactive or spool_is_active(spool)
-        }
+        wanted = set(coordinator.data or {})
         if new := wanted - known:
             entities: list[Entity] = []
             for sid in new:

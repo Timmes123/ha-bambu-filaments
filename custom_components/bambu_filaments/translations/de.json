@@ -46,8 +46,11 @@
         "data": {
           "scan_interval": "Abrufintervall (Minuten)",
           "spool_entities": "Ein Gerät pro Spule anlegen",
-          "include_inactive": "Auch Geräte für inaktive Spulen anlegen",
+          "auto_dedup_manual": "Manuelle Duplikate automatisch entfernen, wenn eine Spule ins AMS gelegt wird",
           "color_language": "Sprache der Farbnamen"
+        },
+        "data_description": {
+          "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat."
         }
       }
     }

@@ -46,8 +46,11 @@
         "data": {
           "scan_interval": "Polling interval (minutes)",
           "spool_entities": "Create one device per spool",
-          "include_inactive": "Also create devices for inactive spools",
+          "auto_dedup_manual": "Auto-remove manual duplicates when a spool is loaded into the AMS",
           "color_language": "Color name language"
+        },
+        "data_description": {
+          "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates."
         }
       }
     }

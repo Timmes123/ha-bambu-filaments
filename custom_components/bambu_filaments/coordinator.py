@@ -14,9 +14,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import AuthExpired, BambuCloudClient, BambuCloudError
 from .colors import BambuColorDB
 from .const import (
+    DEFAULT_AUTO_DEDUP,
     DEFAULT_COLOR_LANG,
     DEFAULT_SCAN_INTERVAL_MIN,
     DOMAIN,
+    OPT_AUTO_DEDUP,
     OPT_COLOR_LANG,
     OPT_SCAN_INTERVAL,
 )
@@ -24,9 +26,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def spool_is_active(spool: dict[str, Any]) -> bool:
-    """A spool counts as active while the cloud reports status 0."""
-    return spool.get("status", 0) == 0
+def _hex6(color: Any) -> str:
+    """Normalize a cloud color to bare RRGGBB (AMS spools may lack '#' or carry alpha)."""
+    if not isinstance(color, str):
+        return ""
+    return color.lstrip("#").upper()[:6]
 
 
 def spool_remaining_pct(spool: dict[str, Any]) -> int:
@@ -78,9 +82,83 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             ) from err
         except BambuCloudError as err:
             raise UpdateFailed(str(err)) from err
-        return {
+        data = {
             s["id"]: _sanitize_spool(s) for s in spools if isinstance(s.get("id"), int)
         }
+        # Auto-dedup only acts on spools that are NEW relative to the previous
+        # sync - the first refresh after (re)load establishes the baseline and
+        # never deletes, so a restart can't mass-match the whole library.
+        if self.data is not None and self.config_entry.options.get(
+            OPT_AUTO_DEDUP, DEFAULT_AUTO_DEDUP
+        ):
+            await self._async_dedup_manual(data)
+        return data
+
+    async def _async_dedup_manual(self, data: dict[int, dict[str, Any]]) -> None:
+        """For each newly appeared AMS spool, delete ONE matching full manual spool.
+
+        The cloud creates a fresh spool keyed by RFID whenever an official
+        spool is first loaded into an AMS; a manually pre-created entry for
+        that spool can never be matched by Bambu and would stay behind as a
+        duplicate. This removes exactly one full manual twin per new AMS spool.
+        """
+        new_ams = [
+            spool
+            for sid, spool in data.items()
+            if sid not in self.data and spool.get("createType") == "ams"
+        ]
+        for ams_spool in new_ams:
+            twin = self._find_manual_twin(ams_spool, data)
+            if twin is None:
+                continue
+            try:
+                await self.hass.async_add_executor_job(
+                    self.client.delete_spools, [twin["id"]]
+                )
+            except (AuthExpired, BambuCloudError) as err:
+                _LOGGER.warning(
+                    "Auto-dedup: could not delete manual spool %s: %s", twin["id"], err
+                )
+                continue
+            data.pop(twin["id"], None)
+            _LOGGER.info(
+                "Auto-dedup: new AMS spool %s (%s %s %s) adopted manual spool %s - "
+                "deleted the manual duplicate",
+                ams_spool.get("id"),
+                ams_spool.get("filamentVendor"),
+                ams_spool.get("filamentName"),
+                ams_spool.get("color"),
+                twin["id"],
+            )
+
+    @staticmethod
+    def _find_manual_twin(
+        ams_spool: dict[str, Any], data: dict[int, dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """A full, manually created spool of the same product and color."""
+
+        def _norm(value: Any) -> str:
+            return str(value or "").strip().lower()
+
+        candidates = [
+            spool
+            for spool in data.values()
+            if spool.get("createType") == "manual"
+            and _norm(spool.get("filamentVendor")) == _norm(ams_spool.get("filamentVendor"))
+            and _norm(spool.get("filamentId")) == _norm(ams_spool.get("filamentId"))
+            and _hex6(spool.get("color")) == _hex6(ams_spool.get("color"))
+            and isinstance(spool.get("totalNetWeight"), (int, float))
+            and (spool.get("totalNetWeight") or 0) > 0
+            and (spool.get("netWeight") or 0) >= spool["totalNetWeight"]
+        ]
+        if not candidates:
+            return None
+        # Prefer an untouched entry (no note, no custom name); oldest id first
+        # so personalized spools survive the longest.
+        candidates.sort(
+            key=lambda s: (bool(s.get("note")), bool(s.get("displayName")), s.get("id", 0))
+        )
+        return candidates[0]
 
     async def async_get_catalog(self) -> list[dict[str, Any]]:
         """Normalized create-catalog entries, cached for an hour."""

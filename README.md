@@ -27,10 +27,19 @@ This integration is about your **account-level spool inventory**. It complements
 - **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Bidirectional sync** — spools added or removed in Bambu Studio or the Bambu app appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear there too.
+- **Stock tracking without duplicates** — pre-register sealed spools manually and let the integration auto-remove the manual entry the moment the real spool is first loaded into the AMS ([details below](#track-unopened-stock--without-duplicates)) — something even Bambu's own apps can't do.
 - **Write actions** — `set_remaining`, `set_note`, `set_filament_id`, `update_spool`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
 - **Dashboard card** — a `custom:bambu-filaments-card` shipped with the integration (auto-registered, no extra install): spool list in the style of Bambu Studio's Filament Manager with color swatches, remaining bars and per-group totals; configurable grouping (filament line/material/none), sorting, compact mode, thresholds, optional delete buttons — with a full UI editor.
-- **Options** — polling interval, per-spool devices on/off, include inactive spools, color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
+- **Options** — polling interval, per-spool devices on/off, auto-dedup of manual spools, color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
 - Full config flow with email-code (incl. resend) and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
+
+## Track unopened stock — without duplicates
+
+Bought five spools of a color but only loaded one? Register the sealed ones manually (card add dialog or the `create_spool` action) so your inventory reflects what's actually on the shelf.
+
+With the official apps that backfires later: the moment such a spool is first loaded into an AMS, the Bambu cloud creates a **new** entry from the spool's RFID tag — it never links up with your manual entry, which stays behind as a duplicate you have to hunt down and delete by hand.
+
+This integration closes that gap. Enable **"Auto-remove manual duplicates when a spool is loaded into the AMS"** in the integration options and, whenever a new AMS-registered spool appears in the library, exactly **one** matching manual spool — same brand, same product, same color, still full — is deleted from the cloud automatically. Spools you personalized (custom name or note) are kept the longest, partially used manual spools are never touched, and the feature only ever reacts to spools that are genuinely new since the previous sync. Your stock count stays correct from sealed box to AMS — a reconciliation even Bambu's own apps don't offer.
 
 ## Installation (HACS)
 
@@ -67,7 +76,7 @@ Open the integration's *Configure* dialog:
 
 - **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing.
 - **One device per spool** (default on) — turn off if you only want the aggregate sensors.
-- **Include inactive spools** (default off) — also create devices for archived/empty spools.
+- **Auto-remove manual duplicates** (default off) — when a new AMS-registered spool appears, delete one matching full, manually created spool from the cloud library ([details](#track-unopened-stock--without-duplicates)).
 - **Color name language** (default automatic) — force English or German color names; Bambu's own database leaves some colors untranslated, those fall back to English.
 
 ## FAQ

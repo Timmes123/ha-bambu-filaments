@@ -14,12 +14,12 @@ REGIONS = [REGION_GLOBAL, REGION_CHINA]
 
 OPT_SCAN_INTERVAL = "scan_interval"
 OPT_SPOOL_ENTITIES = "spool_entities"
-OPT_INCLUDE_INACTIVE = "include_inactive"
+OPT_AUTO_DEDUP = "auto_dedup_manual"
 OPT_COLOR_LANG = "color_language"
 
 DEFAULT_SCAN_INTERVAL_MIN = 15
 DEFAULT_SPOOL_ENTITIES = True
-DEFAULT_INCLUDE_INACTIVE = False
+DEFAULT_AUTO_DEDUP = False
 DEFAULT_COLOR_LANG = "auto"
 COLOR_LANGS = ["auto", "de", "en"]
 

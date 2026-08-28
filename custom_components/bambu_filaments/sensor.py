@@ -24,7 +24,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import BambuFilamentsConfigEntry
 from .colors import normalize_hex
 from .const import DOMAIN
-from .coordinator import BambuFilamentsCoordinator, spool_is_active, spool_remaining_pct
+from .coordinator import BambuFilamentsCoordinator, spool_remaining_pct
 from .entity import (
     async_setup_spool_platform,
     clean_display_name,
@@ -129,11 +129,8 @@ class BambuFilamentsEntity(CoordinatorEntity[BambuFilamentsCoordinator]):
             configuration_url="https://bambulab.com",
         )
 
-    def _spools(self, active_only: bool = False) -> list[dict[str, Any]]:
-        spools = list((self.coordinator.data or {}).values())
-        if active_only:
-            spools = [s for s in spools if spool_is_active(s)]
-        return spools
+    def _spools(self) -> list[dict[str, Any]]:
+        return list((self.coordinator.data or {}).values())
 
 
 class SpoolCountSensor(BambuFilamentsEntity, SensorEntity):
@@ -151,18 +148,17 @@ class SpoolCountSensor(BambuFilamentsEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return len(self._spools(active_only=True))
+        return len(self._spools())
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         spools = self._spools()
         by_material: dict[str, int] = {}
         for spool in spools:
-            if spool_is_active(spool):
-                material = spool.get("filamentType") or "unknown"
-                by_material[material] = by_material.get(material, 0) + (
-                    spool.get("netWeight") or 0
-                )
+            material = spool.get("filamentType") or "unknown"
+            by_material[material] = by_material.get(material, 0) + (
+                spool.get("netWeight") or 0
+            )
         return {
             "total_spools": len(spools),
             "remaining_g_by_material": by_material,
@@ -185,7 +181,7 @@ class TotalRemainingSensor(BambuFilamentsEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return sum(s.get("netWeight") or 0 for s in self._spools(active_only=True))
+        return sum(s.get("netWeight") or 0 for s in self._spools())
 
 
 class SpoolEntityBase(CoordinatorEntity[BambuFilamentsCoordinator], SensorEntity):
