@@ -167,8 +167,7 @@ Everything is also configurable in the **visual editor**, including material fil
 | `materials` | – | Filter: list of materials to include (e.g. `[PLA, PETG]`) |
 | `only_in_printer` | `false` | Filter: only spools currently loaded in a printer/AMS |
 | `max_items` | – | Cap the number of rows after sorting (top-N list) |
-| `show_empty` | `true` | Include spools with 0 g left |
-| `show_archived` | `false` | Include archived/inactive spools |
+| `show_empty` | `true` | Include spools with 0 g left. When off, empty spools are removed before `combine` merges stacks, so a ×n stack shrinks to its non-empty members |
 | `show_location` | `true` | Show printer/AMS slot for mounted spools |
 | `show_code` | `true` | Show Bambu color code and hex |
 | `show_note` | `false` | Show the spool note |

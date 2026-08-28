@@ -9,7 +9,6 @@ const STR = {
     empty: "No spools found.",
     no_entity: "Bambu Filaments spools sensor not found. Is the integration set up?",
     delete_confirm: (n) => `Delete "${n}" from the Bambu cloud library?`,
-    archived: "archived",
     title: "Filament",
     add_btn: "Add spool",
     d_title: "New spool",
@@ -48,7 +47,6 @@ const STR = {
     e_only_printer: "Only spools loaded in a printer/AMS",
     e_max_items: "Max. rows (empty = all)",
     e_show_empty: "Show empty spools",
-    e_show_archived: "Show archived spools",
     e_show_location: "Show printer/AMS location",
     e_show_code: "Show color code and hex",
     e_show_note: "Show note",
@@ -64,7 +62,6 @@ const STR = {
     empty: "Keine Spulen gefunden.",
     no_entity: "Bambu-Filaments-Spulensensor nicht gefunden. Ist die Integration eingerichtet?",
     delete_confirm: (n) => `„${n}" aus der Bambu-Cloud-Bibliothek löschen?`,
-    archived: "archiviert",
     title: "Filament",
     add_btn: "Neue Spule anlegen",
     d_title: "Neue Spule",
@@ -102,7 +99,6 @@ const STR = {
     e_only_printer: "Nur eingelegte Spulen (Drucker/AMS)",
     e_max_items: "Max. Zeilen (leer = alle)",
     e_show_empty: "Leere Spulen anzeigen",
-    e_show_archived: "Archivierte Spulen anzeigen",
     e_show_location: "Drucker-/AMS-Position anzeigen",
     e_show_code: "Farbcode und Hex anzeigen",
     e_show_note: "Notiz anzeigen",
@@ -122,7 +118,6 @@ const DEFAULTS = {
   only_in_printer: false,
   show_add: true,
   show_empty: true,
-  show_archived: false,
   show_location: true,
   show_code: true,
   show_note: false,
@@ -237,11 +232,10 @@ class BambuFilamentsCard extends HTMLElement {
   _visibleSpools(st) {
     const c = this._config;
     let spools = (st.attributes.spools || []).slice();
-    if (!c.show_archived) spools = spools.filter((s) => (s.status ?? 0) === 0);
-    if (c.combine) spools = this._combine(spools);
-    // With combine on, the empty filter judges the summed remainder — a color
-    // with enough backup spools no longer shows up as (nearly) empty.
+    // Empty spools are dropped before combining so a stack shrinks to its
+    // non-empty members (×5 instead of ×7) — matching what the Bambu apps show.
     if (!c.show_empty) spools = spools.filter((s) => (s.remaining_g ?? 0) > 0);
+    if (c.combine) spools = this._combine(spools);
     if (c.only_in_printer) spools = spools.filter((s) => s.in_printer);
     if (Array.isArray(c.materials) && c.materials.length) {
       spools = spools.filter((s) => c.materials.includes(s.material));
@@ -695,7 +689,6 @@ class BambuFilamentsCard extends HTMLElement {
         meta.push(`${esc(s.device_name)}${s.slot_id != null && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
       }
     }
-    if ((s.status ?? 0) !== 0) meta.push(t.archived);
     if (c.show_note && !combined && s.note) meta.push(esc(s.note));
     const edit = c.show_edit && !combined
       ? `<ha-icon class="edit" icon="mdi:cog-outline" data-spool="${s.spool_id}"></ha-icon>`
@@ -857,7 +850,6 @@ class BambuFilamentsCardEditor extends HTMLElement {
         ${materials.length ? `<label>${t.e_materials}</label><div class="mats">${matBoxes}</div>` : ""}
         <div class="sect"></div>
         ${check("show_empty", t.e_show_empty)}
-        ${check("show_archived", t.e_show_archived)}
         ${check("show_location", t.e_show_location)}
         ${check("show_code", t.e_show_code)}
         ${check("show_note", t.e_show_note)}
