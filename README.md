@@ -180,6 +180,7 @@ Everything is also configurable in the **visual editor**, including material fil
 | `show_location` | `true` | Show printer/AMS slot for mounted spools |
 | `show_code` | `true` | Show Bambu color code and hex |
 | `show_note` | `false` | Show the spool note |
+| `show_type` | `false` | Show how each spool entered the library — registered by the AMS or created manually; combined stacks show the mix (e.g. `AMS ×5, manual ×2`) |
 | `show_edit` | `true` | Cog icon per row that opens the edit dialog (rename, weights, color, profile, note — and delete from the cloud) |
 | `show_add` | `true` | "Add spool" button that opens an in-card dialog (vendor, material, product line, color picker, weights) — for third-party spools too |
 | `compact` | `false` | Slimmer rows without the meta line |

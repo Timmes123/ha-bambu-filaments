@@ -50,6 +50,9 @@ const STR = {
     e_show_location: "Show printer/AMS location",
     e_show_code: "Show color code and hex",
     e_show_note: "Show note",
+    e_show_type: "Show spool type (AMS / manual)",
+    type_ams: "AMS",
+    type_manual: "manual",
     e_show_edit: "Show edit button",
     e_show_add: "Show add-spool button",
     e_compact: "Compact rows",
@@ -102,6 +105,9 @@ const STR = {
     e_show_location: "Drucker-/AMS-Position anzeigen",
     e_show_code: "Farbcode und Hex anzeigen",
     e_show_note: "Notiz anzeigen",
+    e_show_type: "Spulentyp anzeigen (AMS / manuell)",
+    type_ams: "AMS",
+    type_manual: "manuell",
     e_show_edit: "Bearbeiten-Button anzeigen",
     e_show_add: "Neue-Spule-Button anzeigen",
     e_compact: "Kompakte Zeilen",
@@ -121,6 +127,7 @@ const DEFAULTS = {
   show_location: true,
   show_code: true,
   show_note: false,
+  show_type: false,
   show_edit: true,
   compact: false,
   low_threshold: 20,
@@ -689,6 +696,23 @@ class BambuFilamentsCard extends HTMLElement {
         meta.push(`${esc(s.device_name)}${s.slot_id != null && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
       }
     }
+    if (c.show_type) {
+      const label = (ct) => ct === "ams" ? t.type_ams : ct === "manual" ? t.type_manual : (ct || "?");
+      if (combined) {
+        // A stack can mix entry types - "AMS ×5, manuell ×2"; uniform stacks
+        // just show the label (the ×n chip already carries the count).
+        const counts = new Map();
+        for (const sp of s._spools || []) {
+          const k = label(sp.create_type);
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+        meta.push([...counts.entries()]
+          .map(([k, n]) => counts.size > 1 ? `${esc(k)} ×${n}` : esc(k))
+          .join(", "));
+      } else {
+        meta.push(esc(label(s.create_type)));
+      }
+    }
     if (c.show_note && !combined && s.note) meta.push(esc(s.note));
     const edit = c.show_edit && !combined
       ? `<ha-icon class="edit" icon="mdi:cog-outline" data-spool="${s.spool_id}"></ha-icon>`
@@ -853,6 +877,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
         ${check("show_location", t.e_show_location)}
         ${check("show_code", t.e_show_code)}
         ${check("show_note", t.e_show_note)}
+        ${check("show_type", t.e_show_type)}
         ${check("show_edit", t.e_show_edit)}
         ${check("show_add", t.e_show_add)}
         ${check("compact", t.e_compact)}
