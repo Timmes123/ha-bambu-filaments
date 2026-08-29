@@ -86,6 +86,7 @@ def spool_attributes(
         "in_printer": spool.get("inPrinter"),
         "device_name": spool.get("deviceName"),
         "ams_id": spool.get("amsId"),
+        "ams_type": spool.get("amsType"),
         "slot_id": spool.get("slotId"),
     }
 

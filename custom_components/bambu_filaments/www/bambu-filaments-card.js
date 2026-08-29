@@ -50,9 +50,10 @@ const STR = {
     e_show_location: "Show printer/AMS location",
     e_show_code: "Show color code and hex",
     e_show_note: "Show note",
-    e_show_type: "Show spool type (AMS / manual)",
-    type_ams: "AMS",
+    e_show_type: "Show spool type (RFID / manual)",
+    type_ams: "RFID",
     type_manual: "manual",
+    loc_ext: "External",
     e_show_edit: "Show edit button",
     e_show_add: "Show add-spool button",
     e_compact: "Compact rows",
@@ -105,9 +106,10 @@ const STR = {
     e_show_location: "Drucker-/AMS-Position anzeigen",
     e_show_code: "Farbcode und Hex anzeigen",
     e_show_note: "Notiz anzeigen",
-    e_show_type: "Spulentyp anzeigen (AMS / manuell)",
-    type_ams: "AMS",
+    e_show_type: "Spulentyp anzeigen (RFID / manuell)",
+    type_ams: "RFID",
     type_manual: "manuell",
+    loc_ext: "Extern",
     e_show_edit: "Bearbeiten-Button anzeigen",
     e_show_add: "Neue-Spule-Button anzeigen",
     e_compact: "Kompakte Zeilen",
@@ -172,6 +174,44 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[c]);
+}
+
+// Maps the cloud's numeric amsType (Studio's DevAmsType enum) to product
+// names - mirrors AMS_TYPE_NAMES in BambuStudio's filament-manager web UI.
+const AMS_TYPE_NAMES = { 1: "AMS", 2: "AMS Lite", 3: "AMS 2 Pro", 4: "AMS HT", 5: "AMS Lite", 6: "AMS", 7: "AMS" };
+
+// Studio-style slot label ("A1".."D4", second AMS = "B1".., AMS HT = "HT-A",
+// external spool holder = null -> caller shows the ext label). Mirrors
+// GetTrayId + transition_tridid in the BambuStudio source: letter is
+// 'A' + amsId, number is slotId + 1.
+function slotLabel(s) {
+  const ams = Number(s.ams_id);
+  const slot = Number(s.slot_id);
+  if (s.slot_id == null || s.slot_id === "" || !Number.isFinite(slot)) return null;
+  if (Number(s.ams_type) === 4 || (Number.isFinite(ams) && ams >= 128)) {
+    const i = ams - 128;
+    return i >= 0 && i < 26 ? `HT-${String.fromCharCode(65 + i)}` : null;
+  }
+  if (!Number.isFinite(ams) || ams < 0 || ams > 25) return `Slot ${slot + 1}`;
+  return `${String.fromCharCode(65 + ams)}${slot + 1}`;
+}
+
+// "A2L · AMS 2 Pro · A1" - same three parts, same order as Bambu Studio's
+// filament manager (formatSlotLocation). extLabel is the localized text for
+// the external spool holder (slotId 255 / amsType 0).
+function locationLabel(s, extLabel) {
+  if (!s.device_name) return null;
+  const isExt = String(s.slot_id) === "255" || Number(s.ams_type) === 0;
+  const parts = [s.device_name];
+  if (isExt) {
+    parts.push(extLabel);
+  } else {
+    const model = AMS_TYPE_NAMES[Number(s.ams_type)];
+    if (model) parts.push(model);
+    const sl = slotLabel(s);
+    if (sl) parts.push(sl);
+  }
+  return parts.join(" · ");
 }
 
 function swatchStyle(spool) {
@@ -269,18 +309,15 @@ class BambuFilamentsCard extends HTMLElement {
       const agg = map.get(key);
       if (!agg) {
         // _spools keeps the original spool objects so an expanded stack can
-        // render (and edit) each physical spool individually.
-        map.set(key, { ...s, _count: 1, _locations: [], _key: key, _spools: [s] });
+        // render (and edit) each physical spool individually - locations are
+        // derived from it at render time (needs the translated ext label).
+        map.set(key, { ...s, _count: 1, _key: key, _spools: [s] });
       } else {
         agg._count += 1;
         agg.remaining_g = (agg.remaining_g || 0) + (s.remaining_g || 0);
         agg.total_g = (agg.total_g || 0) + (s.total_g || 0);
         agg.in_printer = agg.in_printer || s.in_printer;
         agg._spools.push(s);
-      }
-      const rec = map.get(key);
-      if (s.in_printer && s.device_name) {
-        rec._locations.push(`${s.device_name}${s.slot_id != null && s.slot_id !== "" ? ` · Slot ${s.slot_id}` : ""}`);
       }
     }
     return [...map.values()];
@@ -688,30 +725,35 @@ class BambuFilamentsCard extends HTMLElement {
     // The color name is already part of the title in every grouping mode -
     // the meta line only carries code/hex/location/note.
     const meta = [];
-    if (c.show_code && s.bambu_color_code) meta.push(esc(s.bambu_color_code));
-    if (c.show_code && s.color) meta.push(esc(normHex(s.color).slice(0, 7)));
-    if (c.show_location) {
-      if (combined && s._locations?.length) meta.push(s._locations.map(esc).join(", "));
-      else if (s.in_printer && s.device_name) {
-        meta.push(`${esc(s.device_name)}${s.slot_id != null && s.slot_id !== "" ? ` · Slot ${esc(s.slot_id)}` : ""}`);
-      }
-    }
+    // The type pill leads the meta line - trailing it would hide it whenever
+    // the (often long) location list makes the line ellipsize.
     if (c.show_type) {
       const label = (ct) => ct === "ams" ? t.type_ams : ct === "manual" ? t.type_manual : (ct || "?");
+      const pill = (txt) => `<span class="pill">${esc(txt)}</span>`;
       if (combined) {
-        // A stack can mix entry types - "AMS ×5, manuell ×2"; uniform stacks
-        // just show the label (the ×n chip already carries the count).
+        // A stack can mix entry types - "RFID ×5, manuell ×2" as separate
+        // pills; uniform stacks just show the label (the ×n chip already
+        // carries the count).
         const counts = new Map();
         for (const sp of s._spools || []) {
           const k = label(sp.create_type);
           counts.set(k, (counts.get(k) || 0) + 1);
         }
         meta.push([...counts.entries()]
-          .map(([k, n]) => counts.size > 1 ? `${esc(k)} ×${n}` : esc(k))
-          .join(", "));
+          .map(([k, n]) => pill(counts.size > 1 ? `${k} ×${n}` : k))
+          .join(" "));
       } else {
-        meta.push(esc(label(s.create_type)));
+        meta.push(pill(label(s.create_type)));
       }
+    }
+    if (c.show_code && s.bambu_color_code) meta.push(esc(s.bambu_color_code));
+    if (c.show_code && s.color) meta.push(esc(normHex(s.color).slice(0, 7)));
+    if (c.show_location) {
+      const locs = (combined ? s._spools || [] : [s])
+        .filter((sp) => sp.in_printer && sp.device_name)
+        .map((sp) => locationLabel(sp, t.loc_ext))
+        .filter(Boolean);
+      if (locs.length) meta.push(locs.map(esc).join(", "));
     }
     if (c.show_note && !combined && s.note) meta.push(esc(s.note));
     const edit = c.show_edit && !combined
@@ -767,6 +809,9 @@ class BambuFilamentsCard extends HTMLElement {
       .rname { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .meta { color:var(--secondary-text-color); font-size:0.82em; white-space:nowrap;
               overflow:hidden; text-overflow:ellipsis; }
+      .pill { display:inline-block; background:var(--secondary-background-color);
+              border:1px solid var(--divider-color); border-radius:9px;
+              padding:0 7px; line-height:1.5; font-size:0.95em; }
       .barbg { height:5px; border-radius:3px; background:var(--secondary-background-color);
                margin-top:4px; overflow:hidden; }
       .compact .barbg { margin-top:2px; height:4px; }

@@ -64,7 +64,7 @@
     remaining_g: remaining, total_g: total, status: 0, note: opts.note || "",
     tray_id_name: "", create_type: "ams",
     in_printer: !!opts.loc, device_name: opts.loc || null,
-    ams_id: 0, slot_id: opts.slot ?? "", ...opts.extra,
+    ams_id: 0, ams_type: opts.loc ? 3 : -1, slot_id: opts.slot ?? "", ...opts.extra,
   });
 
   const spools = [
@@ -130,7 +130,7 @@
       title: "Low stock", group_by: "none", combine: true, sort: "remaining_asc",
       max_remaining_g: 500, compact: true, show_add: false } },
     { id: "loaded", cls: "shot", config: {
-      title: "Loaded right now", group_by: "none", only_in_printer: true, show_add: false } },
+      title: "Loaded right now", group_by: "none", only_in_printer: true, show_type: true, show_add: false } },
   ];
 
   for (const { id, cls, config } of CONFIGS) {

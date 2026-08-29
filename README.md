@@ -177,10 +177,10 @@ Everything is also configurable in the **visual editor**, including material fil
 | `only_in_printer` | `false` | Filter: only spools currently loaded in a printer/AMS |
 | `max_items` | – | Cap the number of rows after sorting (top-N list) |
 | `show_empty` | `true` | Include spools with 0 g left. When off, empty spools are removed before `combine` merges stacks, so a ×n stack shrinks to its non-empty members |
-| `show_location` | `true` | Show printer/AMS slot for mounted spools |
+| `show_location` | `true` | Show where a mounted spool sits, in Bambu Studio notation: printer · AMS model · slot (e.g. `A2L · AMS 2 Pro · A1`; second AMS = B1–B4, AMS HT = `HT-A`, external holder = `External`) |
 | `show_code` | `true` | Show Bambu color code and hex |
 | `show_note` | `false` | Show the spool note |
-| `show_type` | `false` | Show how each spool entered the library — registered by the AMS or created manually; combined stacks show the mix (e.g. `AMS ×5, manual ×2`) |
+| `show_type` | `false` | Badge showing how each spool entered the library — `RFID` (tag-registered by the AMS) or `manual`; combined stacks show the mix (e.g. `RFID ×5` `manual ×2`) |
 | `show_edit` | `true` | Cog icon per row that opens the edit dialog (rename, weights, color, profile, note — and delete from the cloud) |
 | `show_add` | `true` | "Add spool" button that opens an in-card dialog (vendor, material, product line, color picker, weights) — for third-party spools too |
 | `compact` | `false` | Slimmer rows without the meta line |
