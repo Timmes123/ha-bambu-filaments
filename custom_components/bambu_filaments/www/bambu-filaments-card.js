@@ -3,11 +3,24 @@
  * the integration's aggregate "spools" sensor attributes.
  */
 
+// Must match "version" in manifest.json (enforced by CI). The backend sends
+// its version in the spools sensor attributes; a mismatch means this browser
+// tab still runs a cached copy of the card from before an update.
+const CARD_VERSION = "1.8.1";
+
+console.info(
+  "%c BAMBU-FILAMENTS-CARD %c v" + CARD_VERSION + " ",
+  "color: white; background: #3f51b5; font-weight: bold;",
+  "color: #3f51b5; background: white; font-weight: bold;"
+);
+
 const STR = {
   en: {
     spools: (n) => `${n} spool${n === 1 ? "" : "s"}`,
     empty: "No spools found.",
     no_entity: "Bambu Filaments spools sensor not found. Is the integration set up?",
+    stale: "Bambu Filaments was updated - reload the page for the new card.",
+    reload: "Reload",
     delete_confirm: (n) => `Delete "${n}" from the Bambu cloud library?`,
     title: "Filament",
     add_btn: "Add spool",
@@ -69,6 +82,8 @@ const STR = {
     spools: (n) => `${n} Spule${n === 1 ? "" : "n"}`,
     empty: "Keine Spulen gefunden.",
     no_entity: "Bambu-Filaments-Spulensensor nicht gefunden. Ist die Integration eingerichtet?",
+    stale: "Bambu Filaments wurde aktualisiert – Seite neu laden für die neue Karte.",
+    reload: "Neu laden",
     delete_confirm: (n) => `„${n}" aus der Bambu-Cloud-Bibliothek löschen?`,
     title: "Filament",
     add_btn: "Neue Spule anlegen",
@@ -380,8 +395,11 @@ class BambuFilamentsCard extends HTMLElement {
 
     this._lastState = st;
     const scroll = c.max_height ? `style="max-height:${Number(c.max_height)}px;overflow-y:auto"` : "";
+    const backendVersion = st.attributes.version;
+    const stale = backendVersion && backendVersion !== CARD_VERSION;
     this.shadowRoot.innerHTML = `
       <ha-card>
+        ${stale ? `<div class="stale"><span>${esc(t.stale)}</span><button class="stale-btn">${esc(t.reload)}</button></div>` : ""}
         ${title ? `<div class="head">
           <div class="title">${esc(title)}</div>
           <div class="sum">${t.spools(spools.length)} · ${fmtG(totalG)}</div>
@@ -393,6 +411,7 @@ class BambuFilamentsCard extends HTMLElement {
     this.shadowRoot.querySelector(".addrow")?.addEventListener("click", () => {
       this._openDialog(t, null);
     });
+    this.shadowRoot.querySelector(".stale-btn")?.addEventListener("click", () => location.reload());
 
     this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
       el.addEventListener("click", () => {
@@ -848,6 +867,11 @@ class BambuFilamentsCard extends HTMLElement {
       .title { font-size:1.15em; font-weight:600; }
       .sum { color: var(--secondary-text-color); font-size:0.9em; }
       .msg { padding:16px 4px; color: var(--secondary-text-color); }
+      .stale { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
+               margin:0 0 8px; padding:6px 10px; border-radius:8px; font-size:0.9em;
+               background: color-mix(in srgb, var(--warning-color, #ff9800) 18%, transparent); }
+      .stale-btn { border:none; border-radius:6px; padding:4px 10px; cursor:pointer; font:inherit;
+                   color: var(--text-primary-color, #fff); background: var(--warning-color, #ff9800); }
       .group { margin-bottom:2px; }
       .ghead { display:flex; align-items:center; gap:6px; padding:8px 0 4px; cursor:pointer;
                border-bottom:1px solid var(--divider-color); font-weight:600; }

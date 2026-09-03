@@ -34,8 +34,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: BambuFilamentsConfigEntr
     # Register the card once per HA run - re-registering the static path on
     # every entry reload would accumulate duplicate routes.
     domain_data = hass.data.setdefault(DOMAIN, {})
+    integration = await async_get_integration(hass, DOMAIN)
+    # Exposed as a sensor attribute so the card can detect a stale, cached
+    # copy of itself after an update (browser tabs survive a HA restart).
+    domain_data["version"] = str(integration.version)
     if not domain_data.get("frontend_registered"):
-        integration = await async_get_integration(hass, DOMAIN)
         await async_setup_frontend(hass, str(integration.version))
         domain_data["frontend_registered"] = True
 

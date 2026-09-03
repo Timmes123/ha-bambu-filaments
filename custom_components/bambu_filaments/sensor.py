@@ -141,7 +141,7 @@ class SpoolCountSensor(BambuFilamentsEntity, SensorEntity):
     _attr_icon = "mdi:counter"
     # The spool list is live data for the card, not history - keeping it out
     # of the recorder avoids writing the full inventory to the DB every poll.
-    _unrecorded_attributes = frozenset({"spools", "remaining_g_by_material"})
+    _unrecorded_attributes = frozenset({"spools", "remaining_g_by_material", "version"})
 
     def __init__(self, coordinator, entry) -> None:
         super().__init__(coordinator, entry)
@@ -164,6 +164,9 @@ class SpoolCountSensor(BambuFilamentsEntity, SensorEntity):
             "total_spools": len(spools),
             "remaining_g_by_material": by_material,
             "spools": [spool_attributes(s, self.coordinator) for s in spools],
+            # Integration version - the card compares it with its own
+            # CARD_VERSION and offers a page reload when they differ.
+            "version": self.hass.data.get(DOMAIN, {}).get("version"),
         }
 
 

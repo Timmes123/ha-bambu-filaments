@@ -23,3 +23,20 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+
+  card-version:
+    name: Card version matches manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare CARD_VERSION with manifest.json
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+          m = json.load(open("custom_components/bambu_filaments/manifest.json"))["version"]
+          js = open("custom_components/bambu_filaments/www/bambu-filaments-card.js", encoding="utf-8").read()
+          c = re.search(r'^const CARD_VERSION = "([^"]+)";', js, re.M)
+          c = c.group(1) if c else None
+          print(f"manifest={m} card={c}")
+          sys.exit(0 if m == c else 1)
+          PY
