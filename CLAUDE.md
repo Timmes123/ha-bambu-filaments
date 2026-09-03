@@ -37,6 +37,10 @@ Authoritative documents:
 - Next ideas (user roadmap): AMS-RFID linkage to ha-bambulab tray sensors.
 - The user's live HA is reachable via MCP; the Bambu printer integration (cloud mode) is installed there, printers: A1 Mini + A2L, each with AMS.
 
+## Issue workflow (since 2026-09-03, same as ha-better-todo)
+
+Labels exist: `fixed in pre-release` (E36209) and `awaiting feedback` (FBCA04). An issue implemented in a pre-release stays OPEN with both labels; the reply names the version, points out it is a pre-release (HACS: enable "show pre-releases") and asks the reporter to test. Close as "completed" only once the reporter confirms or the feature ships stable, then remove `awaiting feedback`. No interim workarounds in replies when the feature is trivial to build - build it and reply with the release. Never post several issue replies at once; stagger them by a few minutes. Release notes (and the stable rollup) thank reporters by @username.
+
 ## Release policy (since v1.0.0)
 
 **All releases after v1.0.0 are GitHub prereleases** (`gh release create --prerelease`), exactly like ha-better-todo — UNLESS the user explicitly asks for a stable release. HACS installs prereleases fine when downloading a pinned version. Version numbering continues normally (1.0.1, 1.1.0, …).
