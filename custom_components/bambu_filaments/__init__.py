@@ -50,15 +50,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: BambuFilamentsConfigEntr
 
     entry.runtime_data = coordinator
 
-    # Create the hub device before the platforms run, so per-spool devices can
-    # reference it via_device without ordering warnings.
-    dr.async_get(hass).async_get_or_create(
+    # Create the hub device before the platforms run; per-spool devices link
+    # to it by registry id (via_device_id - the identifier-based via_device is
+    # deprecated since HA 2026.8 and removed in 2027.8).
+    hub = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name="Bambu Filament Library",
         manufacturer="Bambu Lab",
         model="Filament Manager",
     )
+    coordinator.hub_device_id = hub.id
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))

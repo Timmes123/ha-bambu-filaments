@@ -1,7 +1,7 @@
 """Sensors for the Bambu Filaments integration.
 
 Model: one hub device per account ("Bambu Filament Library") carrying the
-aggregate sensors, plus one device per spool (via_device -> hub) carrying a
+aggregate sensors, plus one device per spool (via_device_id -> hub) carrying a
 remaining-% and a remaining-weight sensor.
 """
 

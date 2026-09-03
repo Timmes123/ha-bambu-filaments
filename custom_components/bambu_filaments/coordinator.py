@@ -88,6 +88,9 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         )
         self.client = client
         self.colordb = colordb
+        # Registry id of the "Bambu Filament Library" hub device (set in
+        # async_setup_entry before the platforms load).
+        self.hub_device_id: str | None = None
         self._catalog_cache: list[dict[str, Any]] | None = None
         self._catalog_cached_at: float = 0.0
         # Auto-register bookkeeping: uuids we created ourselves (until the

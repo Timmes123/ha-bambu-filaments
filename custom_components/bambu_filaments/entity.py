@@ -69,7 +69,7 @@ def spool_device_info(
     spool = (coordinator.data or {}).get(spool_id) or {}
     return DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}-spool-{spool_id}")},
-        via_device=(DOMAIN, entry.entry_id),
+        via_device_id=coordinator.hub_device_id,
         name=spool_display_name(spool, coordinator),
         manufacturer=spool.get("filamentVendor") or "Bambu Lab",
         model=spool.get("filamentName") or spool.get("filamentType"),

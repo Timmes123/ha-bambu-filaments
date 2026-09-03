@@ -1,6 +1,6 @@
 {
   "name": "Bambu Filaments",
-  "homeassistant": "2025.8.0",
+  "homeassistant": "2026.8.0",
   "zip_release": true,
   "filename": "bambu_filaments.zip"
 }

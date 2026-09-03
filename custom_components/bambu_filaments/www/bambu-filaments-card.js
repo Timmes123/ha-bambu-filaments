@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "1.8.1";
+const CARD_VERSION = "1.8.2";
 
 console.info(
   "%c BAMBU-FILAMENTS-CARD %c v" + CARD_VERSION + " ",
