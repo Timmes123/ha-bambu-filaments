@@ -10,7 +10,7 @@ Date: 2026-08-27. Consolidated findings from three parallel research passes (Bam
 
 - Spool-level **inventory** system, not a preset editor. Per spool: vendor/brand, material type, name, `filamentId` (e.g. `GFA00`), color(s) incl. gradient/multicolor, RFID `tag_uid`, remaining net weight in grams (`netWeight`), full-spool net weight (`totalNetWeight`), status (active/empty/archived), note, favorite, entry method (manual / ams_sync / rfid), price, drying reminder, and a live mount snapshot (which printer/AMS/slot the spool sits in).
 - Remaining **percent is not stored server-side** — clients derive it as `netWeight / totalNetWeight * 100`.
-- Official Bambu spools auto-register via RFID; third-party spools are entered manually. Remaining weight is updated by slicer-consumption deduction and AMS sync (throttled to every 10 min while printing), not streamed live.
+- Official Bambu spools auto-register via RFID; third-party spools are entered manually. Remaining weight is updated ONLY by the AMS sync of a running Studio/Handy client (`POST /ams/sync`, throttled to every 10 min per spool while printing), never by the printer itself. There is NO consumption deduction anywhere - not in Studio's filament manager, not in the cloud (verified 2026-09-03: a 64 g print left the mapped manual spool untouched); third-party spools without RFID never change on their own.
 - Studio keeps a local cache (`%APPDATA%\BambuStudio\filament_inventory\spools.json`), but the cloud is authoritative.
 - Distinct from the older **slicer preset sync** (`/v1/iot-service/api/slicer/setting`, `PFUS…` custom filament presets) — that system stores tuning profiles (temps, flow), not spools. A spool links to a preset via `setting_id`/`filamentId`.
 
