@@ -43,6 +43,8 @@ Labels exist: `fixed in pre-release` (E36209) and `awaiting feedback` (FBCA04). 
 
 ## Release policy (since v1.0.0)
 
+**Version numbers (user rule, 2026-09-03 - binding):** MAJOR only for really big changes (1.0 came too early, stays). MINOR (1.x.0) ONLY when genuinely new functions are added. PATCH (1.x.y) for every rework/fix/adjustment of existing functions. Do not burn minor versions: v1.7.0 (runout rule rework) should have been v1.6.2. Bundle small changes into one release where possible.
+
 **All releases after v1.0.0 are GitHub prereleases** (`gh release create --prerelease`), exactly like ha-better-todo — UNLESS the user explicitly asks for a stable release. HACS installs prereleases fine when downloading a pinned version. Version numbering continues normally (1.0.1, 1.1.0, …).
 
 ## Hard rule: deployment only via HACS releases (same as ha-better-todo)
