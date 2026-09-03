@@ -219,7 +219,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         if self._unsub_listener is not None:
             self._unsub_listener()
             self._unsub_listener = None
-        await self._event_debouncer.async_shutdown()
+        self._event_debouncer.async_shutdown()  # @callback, not a coroutine
         await super().async_shutdown()
 
     async def _async_sync_remaining(
