@@ -177,6 +177,10 @@
         "note": {
           "name": "Note",
           "description": "Optional note; shown as the spool's remark in Bambu Studio (written right after creation - the create endpoint itself has no note field)."
+        },
+        "count": {
+          "name": "Count",
+          "description": "How many identical spools to create (1-50), e.g. for sealed stock. All fields apply to every spool."
         }
       }
     },

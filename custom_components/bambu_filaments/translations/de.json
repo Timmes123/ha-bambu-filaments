@@ -177,6 +177,10 @@
         "note": {
           "name": "Notiz",
           "description": "Optionale Notiz; erscheint in Bambu Studio als Bemerkung der Spule (wird direkt nach dem Anlegen geschrieben - der Create-Endpunkt selbst kennt kein Notizfeld)."
+        },
+        "count": {
+          "name": "Anzahl",
+          "description": "Wie viele identische Spulen angelegt werden (1-50), z. B. für ungeöffneten Vorrat. Alle Felder gelten für jede Spule."
         }
       }
     },

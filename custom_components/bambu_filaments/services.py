@@ -66,6 +66,9 @@ CREATE_SPOOL_SCHEMA = vol.Schema(
         vol.Optional("filament_id"): cv.string,
         vol.Optional("display_name"): cv.string,
         vol.Optional("note"): cv.string,
+        # Studio/Handy let you add N spools of one type in a single step
+        # ("stock"); the cloud has no batch create, so this loops the POST.
+        vol.Optional("count", default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=50)),
     }
 )
 DELETE_SPOOL_SCHEMA = vol.Schema({vol.Required("spool_id"): cv.positive_int})
@@ -236,29 +239,50 @@ def async_register_services(hass: HomeAssistant) -> None:
         if display_name := call.data.get("display_name"):
             payload["displayName"] = display_name
         known_ids = set((coordinator.data or {}).keys())
-        await _cloud_write(
-            hass,
-            coordinator,
-            coordinator.client.create_spool,
-            payload,
-            action="Bambu cloud rejected the new spool",
-        )
+        count = call.data["count"]
+        created_n = 0
+        try:
+            for _ in range(count):
+                await _cloud_write(
+                    hass,
+                    coordinator,
+                    coordinator.client.create_spool,
+                    payload,
+                    action="Bambu cloud rejected the new spool",
+                )
+                created_n += 1
+        except HomeAssistantError as err:
+            if created_n == 0:
+                raise
+            # Partial batch: keep what was created, tell the caller how far
+            # it got (the refresh below shows the spools that made it).
+            await coordinator.async_request_refresh()
+            raise HomeAssistantError(
+                f"{err} (created {created_n} of {count} spools before the error)"
+            ) from err
         if note := call.data.get("note"):
             # The create endpoint 400s on a note field, so the note is written
-            # with a follow-up PUT onto the just-created spool: re-fetch and
-            # pick the newest matching id we did not know before the create.
+            # with a follow-up PUT onto the just-created spool(s): re-fetch
+            # and take the newest matching ids we did not know before.
             try:
                 spools = await hass.async_add_executor_job(coordinator.client.get_spools)
-                created = [
-                    s
-                    for s in spools
-                    if isinstance(s.get("id"), int)
-                    and s["id"] not in known_ids
-                    and s.get("filamentVendor") == payload["filamentVendor"]
-                    and s.get("filamentName") == payload["filamentName"]
-                ]
-                if created:
-                    target = max(created, key=lambda s: s["id"])
+                created = sorted(
+                    (
+                        s
+                        for s in spools
+                        if isinstance(s.get("id"), int)
+                        and s["id"] not in known_ids
+                        and s.get("filamentVendor") == payload["filamentVendor"]
+                        and s.get("filamentName") == payload["filamentName"]
+                    ),
+                    key=lambda s: s["id"],
+                    reverse=True,
+                )[:created_n]
+                if not created:
+                    _LOGGER.warning(
+                        "Spool was created but not found on re-fetch; note not set"
+                    )
+                for target in created:
                     await hass.async_add_executor_job(
                         coordinator.client.update_spool,
                         {
@@ -266,10 +290,6 @@ def async_register_services(hass: HomeAssistant) -> None:
                             "filamentName": target.get("filamentName") or "",
                             "note": note,
                         },
-                    )
-                else:
-                    _LOGGER.warning(
-                        "Spool was created but not found on re-fetch; note not set"
                     )
             except BambuCloudError as err:
                 _LOGGER.warning("Spool was created but setting its note failed: %s", err)

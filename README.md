@@ -35,7 +35,7 @@ This integration is about your **account-level spool inventory**. It complements
 
 ## Track unopened stock — without duplicates
 
-Bought five spools of a color but only loaded one? Register the sealed ones manually (card add dialog or the `create_spool` action) so your inventory reflects what's actually on the shelf.
+Bought five spools of a color but only loaded one? Register the sealed ones manually so your inventory reflects what's actually on the shelf — in one step, just like in Studio: the card's add dialog has a **Count** field, the edit dialog (cog icon) of any existing spool offers **"Add more spools of this type"**, and the `create_spool` action takes `count`.
 
 With the official apps that backfires later: the moment such a spool is first loaded into an AMS, the Bambu cloud creates a **new** entry from the spool's RFID tag — it never links up with your manual entry, which stays behind as a duplicate you have to hunt down and delete by hand.
 
@@ -96,7 +96,7 @@ Open the integration's *Configure* dialog:
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set a spool's note text |
 | `bambu_filaments.set_filament_id` | `spool_id`, `filament_id` | Link a spool to a Bambu slicer profile (e.g. `GFA00` = Bambu PLA Basic, `GFL99` = Generic PLA) so Bambu Studio can assign it with matching print settings; `""` unlinks |
 | `bambu_filaments.update_spool` | `spool_id` + any of `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `note`, `filament_id`, `display_name` | Change fields of an existing spool — only the provided fields are written; empty strings clear custom name/note/profile |
-| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name`, `note` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands; the note is written right after creation) |
+| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name`, `note`, `count` | Add a new spool to the cloud library (pass `filament_id: ""` for custom/third-party brands; the note is written right after creation; `count` 1–50 creates that many identical spools) |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete a spool from the cloud library |
 | `bambu_filaments.get_catalog` | – | Returns the vendor/product combinations the cloud accepts (response data) |
 

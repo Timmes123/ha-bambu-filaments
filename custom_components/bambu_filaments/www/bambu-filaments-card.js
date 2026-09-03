@@ -30,6 +30,10 @@ const STR = {
     d_color: "Color",
     d_total: "Spool size (g)",
     d_remaining: "Remaining (g)",
+    d_count: "Count",
+    d_dup_title: "Add more spools of this type",
+    d_dup_hint: "Creates full manual spools (stock) with the same brand, product, color and size - name and note are not copied.",
+    d_dup_btn: (n) => `Create ${n} spool${n === 1 ? "" : "s"}`,
     d_save: "Add to library",
     d_cancel: "Cancel",
     d_saving: "Saving…",
@@ -87,6 +91,10 @@ const STR = {
     d_color: "Farbe",
     d_total: "Spulengröße (g)",
     d_remaining: "Restgewicht (g)",
+    d_count: "Anzahl",
+    d_dup_title: "Weitere Spulen dieses Typs anlegen",
+    d_dup_hint: "Legt volle manuelle Spulen (Vorrat) mit gleicher Marke, Sorte, Farbe und Größe an - Name und Notiz werden nicht übernommen.",
+    d_dup_btn: (n) => `${n} Spule${n === 1 ? "" : "n"} anlegen`,
     d_save: "Zur Bibliothek hinzufügen",
     d_cancel: "Abbrechen",
     d_saving: "Speichern…",
@@ -511,6 +519,15 @@ class BambuFilamentsCard extends HTMLElement {
         .dlg-save { background:#00ae42; color:#fff; font-weight:600; }
         .dlg-save:disabled { opacity:.6; }
         .dlg-del { background:var(--error-color, #e74c3c); color:#fff; margin-right:auto; }
+        .dup { border-top:1px solid var(--divider-color, rgba(255,255,255,.12));
+               padding-top:10px; display:flex; flex-direction:column; gap:6px; }
+        .dup .dhint { font-size:0.78em; color:var(--secondary-text-color, #9aa1ad); }
+        .dup .duprow { display:flex; gap:8px; align-items:center; }
+        .dup input[type=number] { width:80px; }
+        .dlg-dup { padding:8px 14px; border-radius:8px; border:none; cursor:pointer;
+          font-size:0.95em; background:var(--secondary-background-color, #2b313c);
+          color:var(--primary-text-color, #e3e5ea); font-weight:600; }
+        .dlg-dup:disabled { opacity:.6; }
       </style>
       <div class="overlay">
         <div class="dlg">
@@ -546,7 +563,21 @@ class BambuFilamentsCard extends HTMLElement {
             <label>${t.d_total}<input id="f-total" type="number" min="1" value="${isEdit ? (spool.total_g ?? 1000) : 1000}"/></label>
             <label>${t.d_remaining}<input id="f-remaining" type="number" min="0" placeholder="1000" value="${isEdit ? (spool.remaining_g ?? "") : ""}"/></label>
           </div>
-          <label>${t.d_note}<input id="f-note" type="text" value="${isEdit ? esc(spool.note || "") : ""}"/></label>
+          ${isEdit
+            ? `<label>${t.d_note}<input id="f-note" type="text" value="${esc(spool.note || "")}"/></label>`
+            : `<div class="cols2">
+            <label>${t.d_note}<input id="f-note" type="text" value=""/></label>
+            <label>${t.d_count}<input id="f-count" type="number" min="1" max="50" value="1"/></label>
+          </div>`}
+          ${isEdit ? `
+          <div class="dup">
+            <div class="dtitle" style="font-size:0.95em">${t.d_dup_title}</div>
+            <div class="dhint">${t.d_dup_hint}</div>
+            <div class="duprow">
+              <input id="f-dupcount" type="number" min="1" max="50" value="1"/>
+              <button class="dlg-dup">${t.d_dup_btn(1)}</button>
+            </div>
+          </div>` : ""}
           <div class="derr" hidden></div>
           <div class="dbtns">
             ${isEdit ? `<button class="dlg-del">${t.d_delete}</button>` : ""}
@@ -581,6 +612,35 @@ class BambuFilamentsCard extends HTMLElement {
       this._hass.callService("bambu_filaments", "delete_spool", { spool_id: spool.spool_id });
       close();
     });
+    if (isEdit) {
+      const dupBtn = root.querySelector(".dlg-dup");
+      const dupCount = root.querySelector("#f-dupcount");
+      const clampDup = () => Math.min(50, Math.max(1, Math.round(Number(dupCount.value)) || 1));
+      dupCount.addEventListener("input", () => { dupBtn.textContent = t.d_dup_btn(clampDup()); });
+      dupBtn.addEventListener("click", async () => {
+        const n = clampDup();
+        const err = root.querySelector(".derr");
+        dupBtn.disabled = true;
+        dupBtn.textContent = t.d_saving;
+        try {
+          await this._hass.callService("bambu_filaments", "create_spool", {
+            vendor: spool.vendor || "Bambu Lab",
+            material: spool.material || "",
+            name: spool.name || spool.material || "",
+            filament_id: spool.filament_id || "",
+            color: normHex(spool.color).slice(0, 7) || "#000000",
+            total_g: spool.total_g || 1000,
+            count: n,
+          });
+          close();
+        } catch (e) {
+          dupBtn.disabled = false;
+          dupBtn.textContent = t.d_dup_btn(n);
+          err.hidden = false;
+          err.textContent = t.d_error;
+        }
+      });
+    }
     if (catalog.length) {
       root.querySelector("#f-vendor").addEventListener("change", (ev) => {
         const isCustom = ev.target.value === "__custom__";
@@ -657,6 +717,8 @@ class BambuFilamentsCard extends HTMLElement {
       try {
         if (!isEdit) {
           if (val("f-note")) data.note = val("f-note");
+          const n = Math.min(50, Math.max(1, Math.round(Number(val("f-count"))) || 1));
+          if (n > 1) data.count = n;
           await this._hass.callService("bambu_filaments", "create_spool", data);
         } else {
           // Send only the fields that actually changed (minimal PUT, like
