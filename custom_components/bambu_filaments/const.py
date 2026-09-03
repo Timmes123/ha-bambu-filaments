@@ -21,6 +21,8 @@ OPT_AUTO_REGISTER = "auto_register_ams"
 OPT_AUTO_REGISTER_UNAVAILABLE = "auto_register_ams_unavailable"
 OPT_SYNC_REMAINING = "sync_ams_remaining"
 OPT_SYNC_REMAINING_UNAVAILABLE = "sync_ams_remaining_unavailable"
+OPT_EMPTY_ON_RUNOUT = "empty_on_runout"
+OPT_EMPTY_ON_RUNOUT_UNAVAILABLE = "empty_on_runout_unavailable"
 OPT_EMPTY_PCT = "empty_on_removal_pct"
 OPT_EMPTY_PCT_UNAVAILABLE = "empty_on_removal_pct_unavailable"
 OPT_DEDUCT_USAGE = "deduct_print_usage"
@@ -31,7 +33,11 @@ DEFAULT_AUTO_DEDUP = False
 DEFAULT_COLOR_LANG = "auto"
 DEFAULT_AUTO_REGISTER = False
 DEFAULT_SYNC_REMAINING = False
-DEFAULT_EMPTY_PCT = 5  # 0 = off
+DEFAULT_EMPTY_ON_RUNOUT = False
+DEFAULT_EMPTY_PCT = 0  # 0 = off (optional extra rule next to the runout rule)
+# Sanity cap for the runout rule: a spool pulled mid-print with more than
+# this left was a deliberate filament change, not a runout.
+RUNOUT_MAX_REMAIN_PCT = 20
 DEFAULT_DEDUCT_USAGE = False
 # Studio pushes AMS weights at most every 10 min per spool while the printer is busy.
 REMAINING_PUSH_COOLDOWN_S = 600

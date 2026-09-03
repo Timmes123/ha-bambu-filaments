@@ -117,6 +117,7 @@ class MountedTray:
     ams_model: str
     ams_id: int
     slot_id: str
+    active: bool = False
 
     @property
     def location(self) -> str:
@@ -194,6 +195,7 @@ def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
                 ams_model=device.model or "",
                 ams_id=ams_id,
                 slot_id=slot_id,
+                active=bool(attrs.get("active")),
             )
         )
     return trays

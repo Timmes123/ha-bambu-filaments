@@ -39,6 +39,9 @@ from .const import (
     DEFAULT_SYNC_REMAINING,
     OPT_EMPTY_PCT,
     DEFAULT_EMPTY_PCT,
+    OPT_EMPTY_ON_RUNOUT,
+    DEFAULT_EMPTY_ON_RUNOUT,
+    RUNOUT_MAX_REMAIN_PCT,
     OPT_DEDUCT_USAGE,
     DEFAULT_DEDUCT_USAGE,
     REMAINING_PUSH_COOLDOWN_S,
@@ -97,6 +100,10 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         # last seen AMS percent per uuid (for the empty-on-removal rule).
         self._last_push: dict[str, tuple[int, float]] = {}
         self._last_remain: dict[str, tuple[int, MountedTray]] = {}
+        # uuids seen as the active tray while the printer was busy - kept
+        # until the print ends, so a spool that ran out (and was possibly
+        # switched away from by AMS backup) is still recognised on removal.
+        self._printing_from: set[str] = set()
         # Progress snapshot per printer taken when a print stops - lets a
         # cancelled job be booked proportionally.
         self._last_progress: dict[str, tuple[int, datetime]] = {}
@@ -156,19 +163,33 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         want_register = self._opt(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
         want_remaining = self._opt(OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING)
         empty_pct = int(self._opt(OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT) or 0)
-        if not (want_register or want_remaining or empty_pct):
+        runout = bool(self._opt(OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT))
+        if not (want_register or want_remaining or empty_pct or runout):
             return data
         if not bambulab_available(self.hass):
             return data
         trays = scan_mounted_rfid_trays(self.hass)
         if want_register:
             data = await self._async_register_ams(data, trays)
-        if empty_pct:
-            await self._async_mark_removed_empty(data, trays, empty_pct)
+        if empty_pct or runout:
+            await self._async_mark_removed_empty(data, trays, empty_pct, runout)
         if want_remaining:
             await self._async_sync_remaining(data, trays)
         self._last_remain = {t.tray_uuid: (t.remain, t) for t in trays}
+        self._track_printing_from(trays)
         return data
+
+    def _track_printing_from(self, trays: list[MountedTray]) -> None:
+        """Remember which mounted spools a running/paused print draws from."""
+        busy_serials = {t.printer_serial for t in trays if printer_busy(self.hass, t.printer_serial)}
+        for tray in trays:
+            if tray.printer_serial in busy_serials:
+                if tray.active:
+                    self._printing_from.add(tray.tray_uuid)
+            else:
+                # Print over: a spool still sitting in an idle printer was not
+                # consumed to the end - forget it.
+                self._printing_from.discard(tray.tray_uuid)
 
     @callback
     def async_update_listener(self) -> None:
@@ -182,6 +203,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             self._opt(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
             or self._opt(OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING)
             or int(self._opt(OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT) or 0)
+            or self._opt(OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT)
             or self._opt(OPT_DEDUCT_USAGE, DEFAULT_DEDUCT_USAGE)
         ):
             wanted = watched_entity_ids(self.hass)
@@ -296,19 +318,43 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
                     spool["depleted"] = True
 
     async def _async_mark_removed_empty(
-        self, data: dict[int, dict[str, Any]], trays: list[MountedTray], pct: int
+        self,
+        data: dict[int, dict[str, Any]],
+        trays: list[MountedTray],
+        pct: int,
+        runout: bool,
     ) -> None:
-        """A spool taken out of the AMS with <= pct % left is booked as empty.
+        """Book a spool as empty when it leaves the AMS under a runout condition.
 
-        Covers the runout-then-swap case where the 0 % reading was never
-        observed (Home Assistant down, AMS estimate stuck at 2-3 %).
+        Runout rule: the spool was the active tray of a running/paused print
+        (and stays remembered until that print ends, so an AMS backup switch
+        does not hide it) and is now gone from the AMS. Real leftovers survive
+        because a spool removed after the print finished is never touched;
+        a spool pulled mid-print with plenty left is a filament change.
+        Percent rule (optional, off by default): last reading <= pct %.
         """
         mounted = {t.tray_uuid for t in trays}
         by_rfid = {
             str(s.get("RFID") or "").upper(): s for s in data.values() if s.get("RFID")
         }
         for uuid, (remain, tray) in self._last_remain.items():
-            if uuid in mounted or remain < 0 or remain > pct:
+            if uuid in mounted:
+                continue
+            was_printing = uuid in self._printing_from
+            self._printing_from.discard(uuid)
+            reason = None
+            if runout and was_printing:
+                if 0 <= remain <= RUNOUT_MAX_REMAIN_PCT or remain < 0:
+                    reason = f"removed while a print was drawing from it (last reading {remain} %)"
+                else:
+                    _LOGGER.info(
+                        "Spool %s %s %s was removed from %s mid-print with %s %% left - "
+                        "treated as a filament change, not a runout",
+                        tray.tray_name, tray.material, tray.color, tray.location, remain,
+                    )
+            if reason is None and pct and 0 <= remain <= pct:
+                reason = f"removed with {remain} % left (<= {pct} %)"
+            if reason is None:
                 continue
             spool = by_rfid.get(uuid)
             if spool is None or int(spool.get("netWeight") or 0) == 0:
@@ -324,9 +370,9 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             spool["netWeight"] = 0
             spool["depleted"] = True
             _LOGGER.info(
-                "Spool %s %s %s was removed from %s with %s %% left (<= %s %%) - marked empty",
+                "Spool %s %s %s %s from %s - marked empty",
                 spool.get("filamentVendor"), spool.get("filamentName"), spool.get("color"),
-                tray.location, remain, pct,
+                reason, tray.location,
             )
 
     # ------------------------------------------------------- usage booking

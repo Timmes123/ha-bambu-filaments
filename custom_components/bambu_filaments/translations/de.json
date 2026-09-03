@@ -52,9 +52,11 @@
           "auto_register_ams_unavailable": "Neue RFID-Spulen im AMS automatisch registrieren (nicht verfügbar)",
           "sync_ams_remaining": "Restmenge aus dem AMS in die Cloud-Bibliothek übertragen",
           "sync_ams_remaining_unavailable": "Restmenge aus dem AMS in die Cloud-Bibliothek übertragen (nicht verfügbar)",
-          "empty_on_removal_pct": "Spule beim Entnehmen aus dem AMS als leer buchen, wenn höchstens so viel übrig ist (%, 0 = aus)",
-          "empty_on_removal_pct_unavailable": "Spule beim Entnehmen aus dem AMS als leer buchen, wenn höchstens so viel übrig ist (%, 0 = aus) (nicht verfügbar)",
-          "deduct_print_usage": "Druckverbrauch von manuell angelegten Spulen abziehen"
+          "empty_on_removal_pct": "Zusätzlich als leer buchen, wenn beim Entnehmen höchstens so viel übrig ist (%, 0 = aus)",
+          "empty_on_removal_pct_unavailable": "Zusätzlich als leer buchen, wenn beim Entnehmen höchstens so viel übrig ist (%, 0 = aus) (nicht verfügbar)",
+          "deduct_print_usage": "Druckverbrauch von manuell angelegten Spulen abziehen",
+          "empty_on_runout": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat",
+          "empty_on_runout_unavailable": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat (nicht verfügbar)"
         },
         "data_description": {
           "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat.",
@@ -62,9 +64,11 @@
           "auto_register_ams_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
           "sync_ams_remaining": "Überträgt die AMS-Restmengenschätzung von Original-RFID-Spulen bei jeder Änderung in die Bibliothek - wie Studio, nur ohne laufendes Studio. Meldet das AMS 0 %, wird die Spule sofort als leer gebucht. Nutzt die Bambu-Lab-Drucker-Integration.",
           "sync_ams_remaining_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
-          "empty_on_removal_pct": "Fängt den Fall „leer gelaufen und gewechselt“ ab: Eine aus dem AMS entnommene Spule, deren letzter Messwert höchstens bei diesem Prozentwert lag, wird auf 0 g gesetzt (die AMS-Schätzung bleibt oft bei 2-3 % hängen, wenn die Spule physisch leer ist).",
+          "empty_on_removal_pct": "Optionale Zusatzregel: Jede aus dem AMS entnommene Spule, deren letzter Messwert höchstens bei diesem Prozentwert lag, wird unabhängig vom Drucken auf 0 g gesetzt. Auf 0 lassen, wenn nicht gewünscht.",
           "empty_on_removal_pct_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
-          "deduct_print_usage": "Bambu bucht für Fremdmarken-Spulen nie Verbrauch. Mit dieser Option wird jeder nach dem Einschalten beendete Druckauftrag genau einmal von der manuellen Spule abgezogen, die laut Bibliothek in dem AMS-Slot liegt - mit den Gramm pro Slot, die die Cloud zum Auftrag speichert. RFID-Spulen werden nie angefasst, anderswo bereits gebuchte Aufträge übersprungen. Abgebrochene Drucke werden anteilig gebucht, wenn die Drucker-Integration den Fortschritt gesehen hat."
+          "deduct_print_usage": "Bambu bucht für Fremdmarken-Spulen nie Verbrauch. Mit dieser Option wird jeder nach dem Einschalten beendete Druckauftrag genau einmal von der manuellen Spule abgezogen, die laut Bibliothek in dem AMS-Slot liegt - mit den Gramm pro Slot, die die Cloud zum Auftrag speichert. RFID-Spulen werden nie angefasst, anderswo bereits gebuchte Aufträge übersprungen. Abgebrochene Drucke werden anteilig gebucht, wenn die Drucker-Integration den Fortschritt gesehen hat.",
+          "empty_on_runout": "Die sichere Leerlauf-Regel: Eine Spule, die aktiver Slot eines laufenden oder pausierten Drucks war (ein AMS-Backup-Wechsel wird mitgemerkt) und vor Druckende aus dem AMS genommen wird, wird auf 0 g gesetzt. Spulen, die nach einem fertigen Druck entnommen werden, oder mitten im Druck mit über 20 % Rest (Filamentwechsel), werden nie angefasst.",
+          "empty_on_runout_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}"
         }
       }
     }

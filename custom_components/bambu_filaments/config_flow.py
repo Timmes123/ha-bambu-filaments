@@ -44,6 +44,7 @@ from .const import (
     DEFAULT_AUTO_REGISTER,
     DEFAULT_COLOR_LANG,
     DEFAULT_DEDUCT_USAGE,
+    DEFAULT_EMPTY_ON_RUNOUT,
     DEFAULT_EMPTY_PCT,
     DEFAULT_SYNC_REMAINING,
     DEFAULT_SCAN_INTERVAL_MIN,
@@ -54,6 +55,8 @@ from .const import (
     OPT_AUTO_REGISTER_UNAVAILABLE,
     OPT_COLOR_LANG,
     OPT_DEDUCT_USAGE,
+    OPT_EMPTY_ON_RUNOUT,
+    OPT_EMPTY_ON_RUNOUT_UNAVAILABLE,
     OPT_EMPTY_PCT,
     OPT_EMPTY_PCT_UNAVAILABLE,
     OPT_SYNC_REMAINING,
@@ -227,6 +230,7 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
             for key in (
                 OPT_AUTO_REGISTER_UNAVAILABLE,
                 OPT_SYNC_REMAINING_UNAVAILABLE,
+                OPT_EMPTY_ON_RUNOUT_UNAVAILABLE,
                 OPT_EMPTY_PCT_UNAVAILABLE,
             ):
                 user_input.pop(key, None)
@@ -234,6 +238,7 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
                 for key, default in (
                     (OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER),
                     (OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING),
+                    (OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT),
                     (OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT),
                 ):
                     user_input[key] = options.get(key, default)
@@ -246,11 +251,13 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
         )
         register_value = options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
         remaining_value = options.get(OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING)
+        runout_value = options.get(OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT)
         pct_value = options.get(OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT)
         if has_bambulab:
             ams_fields = {
                 vol.Required(OPT_AUTO_REGISTER, default=register_value): bool,
                 vol.Required(OPT_SYNC_REMAINING, default=remaining_value): bool,
+                vol.Required(OPT_EMPTY_ON_RUNOUT, default=runout_value): bool,
                 vol.Required(OPT_EMPTY_PCT, default=pct_value): pct_selector(False),
             }
         else:
@@ -260,6 +267,7 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
             ams_fields = {
                 vol.Optional(OPT_AUTO_REGISTER_UNAVAILABLE, default=register_value): ro,
                 vol.Optional(OPT_SYNC_REMAINING_UNAVAILABLE, default=remaining_value): ro,
+                vol.Optional(OPT_EMPTY_ON_RUNOUT_UNAVAILABLE, default=runout_value): ro,
                 vol.Optional(OPT_EMPTY_PCT_UNAVAILABLE, default=pct_value): pct_selector(True),
             }
         schema = vol.Schema(
