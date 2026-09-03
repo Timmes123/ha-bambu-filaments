@@ -12,6 +12,12 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AuthExpired, BambuCloudClient, BambuCloudError
+from .ams_register import (
+    MountedTray,
+    bambulab_available,
+    build_ams_sync_item,
+    scan_mounted_rfid_trays,
+)
 from .colors import BambuColorDB
 from .const import (
     DEFAULT_AUTO_DEDUP,
@@ -19,6 +25,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_MIN,
     DOMAIN,
     OPT_AUTO_DEDUP,
+    OPT_AUTO_REGISTER,
+    DEFAULT_AUTO_REGISTER,
     OPT_COLOR_LANG,
     OPT_SCAN_INTERVAL,
 )
@@ -64,6 +72,12 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         self.colordb = colordb
         self._catalog_cache: list[dict[str, Any]] | None = None
         self._catalog_cached_at: float = 0.0
+        # Auto-register bookkeeping: uuids we created ourselves (until the
+        # cloud lists them) and uuids the user deleted while the spool was
+        # still mounted (never re-create those until the spool is removed).
+        self._registered_uuids: set[str] = set()
+        self._skip_uuids: set[str] = set()
+        self._mounted_known: set[str] = set()
 
     def color_lookup(self, spool: dict[str, Any]) -> tuple[str | None, str | None]:
         """Localized official color name + Bambu color code for a spool."""
@@ -88,11 +102,96 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         # Auto-dedup only acts on spools that are NEW relative to the previous
         # sync - the first refresh after (re)load establishes the baseline and
         # never deletes, so a restart can't mass-match the whole library.
+        # Register first: a spool we just added is "new vs. the previous sync"
+        # for the dedup step below, so pre-entered manual stock gets consumed
+        # exactly as it would after Studio/Handy registered the spool.
+        if self.config_entry.options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER):
+            data = await self._async_register_ams(data)
         if self.data is not None and self.config_entry.options.get(
             OPT_AUTO_DEDUP, DEFAULT_AUTO_DEDUP
         ):
             await self._async_dedup_manual(data)
         return data
+
+    async def _async_register_ams(
+        self, data: dict[int, dict[str, Any]]
+    ) -> dict[int, dict[str, Any]]:
+        """Create library entries for RFID spools that sit in an AMS but are unknown.
+
+        Data comes from the Bambu Lab printer integration's slot sensors; the
+        cloud RFID equals the tray uuid. Spools the user deleted while they
+        were still loaded are remembered and left alone until unloaded.
+        """
+        if not bambulab_available(self.hass):
+            return data
+        trays = scan_mounted_rfid_trays(self.hass)
+        mounted = {t.tray_uuid for t in trays}
+        known = {
+            str(s.get("RFID") or "").upper() for s in data.values() if s.get("RFID")
+        }
+        # A uuid that was mounted AND in the library last time but is gone
+        # from the library now was deleted on purpose - do not resurrect it.
+        self._skip_uuids |= (self._mounted_known & mounted) - known
+        self._skip_uuids &= mounted
+        self._registered_uuids &= mounted - known
+        self._mounted_known = mounted & known
+        missing = [
+            t for t in trays
+            if t.tray_uuid not in known
+            and t.tray_uuid not in self._skip_uuids
+            and t.tray_uuid not in self._registered_uuids
+        ]
+        if not missing:
+            return data
+        try:
+            catalog = await self.async_get_catalog()
+        except (AuthExpired, BambuCloudError):
+            catalog = []
+        created = 0
+        by_printer: dict[str, list[MountedTray]] = {}
+        for tray in missing:
+            by_printer.setdefault(tray.printer_serial, []).append(tray)
+        for dev_id, dev_trays in by_printer.items():
+            items = [build_ams_sync_item(t, catalog, self.colordb) for t in dev_trays]
+            try:
+                result = await self.hass.async_add_executor_job(
+                    self.client.ams_sync, dev_id, items
+                )
+            except (AuthExpired, BambuCloudError) as err:
+                _LOGGER.warning(
+                    "Auto-register: AMS sync for %s rejected (%s): %s",
+                    dev_trays[0].printer_name,
+                    ", ".join(t.location for t in dev_trays),
+                    err,
+                )
+                continue
+            made = {str(r).upper() for r in (result.get("createdRFIDs") or [])}
+            for tray, item in zip(dev_trays, items):
+                self._registered_uuids.add(tray.tray_uuid)
+                if tray.tray_uuid in made:
+                    created += 1
+                    _LOGGER.info(
+                        "Auto-register: added RFID spool %s %s %s (%s, %s/%s g) found in %s "
+                        "to the cloud library",
+                        item["filamentVendor"], item["filamentName"], item["color"],
+                        item["filamentId"], item["netWeight"], item["totalNetWeight"],
+                        tray.location,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "Auto-register: cloud did not report %s in %s as created: %s",
+                        tray.tray_uuid, tray.location, result,
+                    )
+        if not created:
+            return data
+        try:
+            spools = await self.hass.async_add_executor_job(self.client.get_spools)
+        except (AuthExpired, BambuCloudError) as err:
+            _LOGGER.debug("Auto-register: re-fetch after create failed: %s", err)
+            return data
+        return {
+            s["id"]: _sanitize_spool(s) for s in spools if isinstance(s.get("id"), int)
+        }
 
     async def _async_dedup_manual(self, data: dict[int, dict[str, Any]]) -> None:
         """For each newly appeared AMS spool, delete ONE matching full manual spool.

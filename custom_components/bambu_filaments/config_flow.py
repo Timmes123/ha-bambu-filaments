@@ -15,6 +15,8 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
+    BooleanSelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -32,17 +34,21 @@ from .api import (
     EmailCodeRequired,
     TfaRequired,
 )
+from .ams_register import BAMBULAB_REPO_URL, bambulab_available
 from .const import (
     COLOR_LANGS,
     CONF_EMAIL,
     CONF_REGION,
     CONF_TOKEN,
     DEFAULT_AUTO_DEDUP,
+    DEFAULT_AUTO_REGISTER,
     DEFAULT_COLOR_LANG,
     DEFAULT_SCAN_INTERVAL_MIN,
     DEFAULT_SPOOL_ENTITIES,
     DOMAIN,
     OPT_AUTO_DEDUP,
+    OPT_AUTO_REGISTER,
+    OPT_AUTO_REGISTER_UNAVAILABLE,
     OPT_COLOR_LANG,
     OPT_SCAN_INTERVAL,
     OPT_SPOOL_ENTITIES,
@@ -205,9 +211,30 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
-            return self.async_create_entry(data=user_input)
         options = self.config_entry.options
+        has_bambulab = bambulab_available(self.hass)
+        if user_input is not None:
+            # The read-only placeholder is not a setting: drop it and keep
+            # whatever value the real option had.
+            user_input.pop(OPT_AUTO_REGISTER_UNAVAILABLE, None)
+            if not has_bambulab:
+                user_input[OPT_AUTO_REGISTER] = options.get(
+                    OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER
+                )
+            return self.async_create_entry(data=user_input)
+        auto_register_value = options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
+        if has_bambulab:
+            auto_register_field = {
+                vol.Required(OPT_AUTO_REGISTER, default=auto_register_value): bool
+            }
+        else:
+            # Greyed-out toggle + hint (with link) while the printer integration
+            # that provides the AMS slot sensors is not installed/loaded.
+            auto_register_field = {
+                vol.Optional(
+                    OPT_AUTO_REGISTER_UNAVAILABLE, default=auto_register_value
+                ): BooleanSelector(BooleanSelectorConfig(read_only=True))
+            }
         schema = vol.Schema(
             {
                 vol.Required(
@@ -227,6 +254,7 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
                     OPT_AUTO_DEDUP,
                     default=options.get(OPT_AUTO_DEDUP, DEFAULT_AUTO_DEDUP),
                 ): bool,
+                **auto_register_field,
                 vol.Required(
                     OPT_COLOR_LANG,
                     default=options.get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG),
@@ -239,4 +267,8 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
                 ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={"bambulab_url": BAMBULAB_REPO_URL},
+        )

@@ -47,10 +47,14 @@
           "scan_interval": "Abrufintervall (Minuten)",
           "spool_entities": "Ein Gerät pro Spule anlegen",
           "auto_dedup_manual": "Manuelle Duplikate automatisch entfernen, wenn eine Spule ins AMS gelegt wird",
-          "color_language": "Sprache der Farbnamen"
+          "color_language": "Sprache der Farbnamen",
+          "auto_register_ams": "Neue RFID-Spulen im AMS automatisch registrieren",
+          "auto_register_ams_unavailable": "Neue RFID-Spulen im AMS automatisch registrieren (nicht verfügbar)"
         },
         "data_description": {
-          "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat."
+          "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat.",
+          "auto_register_ams": "Liegt eine Original-RFID-Spule in einem AMS-Slot, fehlt aber in der Cloud-Bibliothek, wird sie automatisch angelegt - ohne vorher die Bambu-App oder Studio zu öffnen. Nutzt die AMS-Slot-Sensoren der Bambu-Lab-Drucker-Integration.",
+          "auto_register_ams_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}"
         }
       }
     }

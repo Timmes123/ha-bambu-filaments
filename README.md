@@ -27,11 +27,20 @@ This integration is about your **account-level spool inventory**. It complements
 - **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Bidirectional sync** — spools added or removed in Bambu Studio or the Bambu app appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear there too.
+- **Auto-register spools loaded into the AMS** — no more opening the Bambu app just so the cloud learns about the spool you just inserted ([details below](#auto-register-spools-you-load-into-the-ams); requires the [ha-bambulab](https://github.com/greghesp/ha-bambulab) printer integration).
 - **Stock tracking without duplicates** — pre-register sealed spools manually and let the integration auto-remove the manual entry the moment the real spool is first loaded into the AMS ([details below](#track-unopened-stock--without-duplicates)) — something even Bambu's own apps can't do.
 - **Write actions** — `set_remaining`, `set_note`, `set_filament_id`, `update_spool`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
 - **Dashboard card** — a `custom:bambu-filaments-card` shipped with the integration (auto-registered, no extra install): spool list in the style of Bambu Studio's Filament Manager with color swatches, remaining bars and per-group totals; configurable grouping (filament line/material/none), sorting, compact mode, thresholds, optional delete buttons — with a full UI editor.
 - **Options** — polling interval, per-spool devices on/off, auto-dedup of manual spools, color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
 - Full config flow with email-code (incl. resend) and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
+
+## Auto-register spools you load into the AMS
+
+Bambu's own apps only add a freshly loaded official spool to the cloud library once you open the printer page in Bambu Handy or Bambu Studio. Until then the spool is in your AMS but not in your inventory.
+
+Enable **"Auto-register new RFID spools loaded into the AMS"** in the integration options and the integration does it for you: on every sync it compares the RFID spools currently sitting in your AMS units with the library and creates the missing ones exactly the way Studio does — same brand/product/color, remaining weight from the AMS, and the printer/AMS/slot position. Spools you deliberately deleted from the library while they were still loaded are left alone.
+
+> **Requires the [Bambu Lab printer integration (ha-bambulab)](https://github.com/greghesp/ha-bambulab).** Its AMS slot sensors are the only source for what is physically in your AMS — the cloud library API itself does not know about unregistered spools. Without that integration the option is greyed out in the options dialog. Nothing needs to be configured: printers and AMS units are detected from the sensors automatically. Third-party spools (no RFID) are never touched.
 
 ## Track unopened stock — without duplicates
 
@@ -76,6 +85,7 @@ Open the integration's *Configure* dialog:
 
 - **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing.
 - **One device per spool** (default on) — turn off if you only want the aggregate sensors.
+- **Auto-register new RFID spools loaded into the AMS** (default off; greyed out unless the [ha-bambulab](https://github.com/greghesp/ha-bambulab) printer integration is installed) — create library entries for official spools the AMS sees but the library lacks ([details](#auto-register-spools-you-load-into-the-ams)).
 - **Auto-remove manual duplicates** (default off) — when a new AMS-registered spool appears, delete one matching full, manually created spool from the cloud library ([details](#track-unopened-stock--without-duplicates)).
 - **Color name language** (default automatic) — force English or German color names; Bambu's own database leaves some colors untranslated, those fall back to English.
 

@@ -215,6 +215,21 @@ class BambuCloudClient:
         if response.status_code != 200:
             raise BambuCloudError(f"Creating spool failed (HTTP {response.status_code})")
 
+    def ams_sync(self, dev_id: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+        """Push AMS tray reads for one printer (what Studio does after an AMS scan).
+
+        Unknown RFIDs are created by the server (listed in `createdRFIDs`),
+        known ones get their weight/position updated; other slots are untouched.
+        """
+        response = self._request(
+            "post",
+            f"{self._api}/v1/design-user-service/my/filament/v2/ams/sync",
+            body={"devId": dev_id, "items": items},
+        )
+        if response.status_code != 200:
+            raise BambuCloudError(f"AMS sync failed (HTTP {response.status_code})")
+        return self._json(response)
+
     def delete_spools(self, spool_ids: list[int]) -> None:
         """Delete spools by cloud id (idempotent on the server side)."""
         response = self._request(

@@ -47,10 +47,14 @@
           "scan_interval": "Polling interval (minutes)",
           "spool_entities": "Create one device per spool",
           "auto_dedup_manual": "Auto-remove manual duplicates when a spool is loaded into the AMS",
-          "color_language": "Color name language"
+          "color_language": "Color name language",
+          "auto_register_ams": "Auto-register new RFID spools loaded into the AMS",
+          "auto_register_ams_unavailable": "Auto-register new RFID spools loaded into the AMS (unavailable)"
         },
         "data_description": {
-          "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates."
+          "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates.",
+          "auto_register_ams": "When an official RFID spool sits in an AMS slot but is missing from the cloud library, it is added automatically - no need to open the Bambu app or Studio first. Uses the AMS slot sensors of the Bambu Lab printer integration.",
+          "auto_register_ams_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}"
         }
       }
     }

@@ -117,12 +117,21 @@ class BambuColorDB:
             record = {
                 "names": entry.get("fila_color_name") or {},
                 "code": entry.get("fila_color_code"),
+                # Short tray code ("A0") - Studio builds trayIdName from it.
+                "tray_code": entry.get("color_code"),
             }
             if fila_id := entry.get("fila_id"):
                 by_id_color[(fila_id, key)] = record
             by_color.setdefault(key, record)
         self._by_id_color = by_id_color
         self._by_color = by_color
+
+    def tray_code(self, filament_id: str | None, colors: list[str]) -> str | None:
+        """Bambu's short tray color code (e.g. "A0") for an exact filament+color match."""
+        if not filament_id or not colors:
+            return None
+        record = self._by_id_color.get((filament_id, _color_key(colors)))
+        return record.get("tray_code") if record else None
 
     def lookup(
         self, filament_id: str | None, colors: list[str], language: str
