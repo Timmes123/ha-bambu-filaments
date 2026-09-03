@@ -12,7 +12,7 @@
 
 Bring your **Bambu Lab cloud filament library** (the *Filament Manager* introduced in Bambu Studio 2.6.1+ and the Bambu app) into Home Assistant: every spool in your account — vendor, material, color, remaining weight — as sensors you can automate on.
 
-This integration is about your **account-level spool inventory**. It complements (and does not replace) printer integrations that expose live AMS data from the printer itself.
+This integration is about your **account-level spool inventory**. It complements (and does not replace) printer integrations that expose live AMS data from the printer itself — and, if the [Bambu Lab printer integration (ha-bambulab)](https://github.com/greghesp/ha-bambulab) is installed, it bridges the two: spools loaded into an AMS get registered, remaining weights stay current and empty spools are booked, all without opening a Bambu app.
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-overview.png" width="480" alt="Bambu Filaments card showing the full spool library grouped by filament line">
 
@@ -22,20 +22,20 @@ This integration is about your **account-level spool inventory**. It complements
 - This integration uses an **unofficial, reverse-engineered Bambu Lab cloud API**. It is not affiliated with or endorsed by Bambu Lab, and it **may stop working at any time** if Bambu Lab changes their cloud.
 - It **requires a Bambu Lab cloud account**. The filament library only exists in the cloud — there is no LAN-only mode for this data.
 - Bambu login tokens expire after roughly **90 days**. When that happens, Home Assistant will prompt you to re-authenticate (usually via an email verification code).
-- The remaining-weight values are what Bambu's cloud reports: they are updated by slicer consumption deduction and AMS syncs, not by a live scale.
+- The remaining-weight values are what Bambu's cloud reports. Bambu only updates them while Studio or the Bambu app is open (AMS estimate for official spools, nothing at all for third-party spools) — this integration can take over that job, see [Keep remaining weights current](#keep-remaining-weights-current--without-opening-an-app). None of it is a live scale.
 
 ## Features
 
 - **One device per spool** (optional, on by default) named with the official webshop color in your HA language (e.g. *PETG HF Forest Green*, or a custom name you gave the spool), carrying a remaining-% sensor (with a color-swatch entity picture and full details as attributes), a remaining-weight sensor, and a **Delete from Bambu Cloud** button.
 - **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
-- **Bidirectional sync** — spools added or removed in Bambu Studio or the Bambu app appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear there too.
+- **Bidirectional sync** — spools added or removed in Bambu Studio or the Bambu app appear/disappear in Home Assistant on the next poll (or immediately after an AMS change when the printer integration is present); spools created or deleted from Home Assistant appear there too.
 - **Remaining weights that stay current** — AMS estimates pushed to the library without Studio running, runout detection, and print-usage deduction for third-party spools ([details below](#keep-remaining-weights-current--without-opening-an-app)).
 - **Auto-register spools loaded into the AMS** — no more opening the Bambu app just so the cloud learns about the spool you just inserted ([details below](#auto-register-spools-you-load-into-the-ams); requires the [ha-bambulab](https://github.com/greghesp/ha-bambulab) printer integration).
 - **Stock tracking without duplicates** — pre-register sealed spools manually and let the integration auto-remove the manual entry the moment the real spool is first loaded into the AMS ([details below](#track-unopened-stock--without-duplicates)) — something even Bambu's own apps can't do.
 - **Write actions** — `set_remaining`, `set_note`, `set_filament_id`, `update_spool`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
-- **Dashboard card** — a `custom:bambu-filaments-card` shipped with the integration (auto-registered, no extra install): spool list in the style of Bambu Studio's Filament Manager with color swatches, remaining bars and per-group totals; configurable grouping (filament line/material/none), sorting, compact mode, thresholds, optional delete buttons — with a full UI editor.
-- **Options** — polling interval, per-spool devices on/off, auto-dedup of manual spools, color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
+- **Dashboard card** — a `custom:bambu-filaments-card` shipped with the integration (auto-registered, no extra install): spool list in the style of Bambu Studio's Filament Manager with color swatches, remaining bars, Studio-style AMS locations, RFID/manual badges and per-group totals; ×n stacks for identical spools, filters (low stock, materials, loaded only), add/edit dialogs incl. third-party brands and multi-spool stock — with a full UI editor.
+- **Everything optional** — all of the above bridge features are toggles (shown right after login and behind *Configure*), plus polling interval, per-spool devices on/off and color name language (auto/German/English — Bambu's own database leaves some colors untranslated, those fall back to English just like in Bambu Studio).
 - Full config flow with email-code (incl. resend) and two-factor login support, re-auth flow, diagnostics (tokens and RFIDs redacted), English and German translations.
 
 ## Auto-register spools you load into the AMS
@@ -100,7 +100,7 @@ This integration closes that gap. Enable **"Auto-remove manual duplicates when a
 
 The same form is shown as the **Features** step during setup and later behind the integration's *Configure* button:
 
-- **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing.
+- **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing. With the printer integration present, AMS and print-status changes trigger an extra refresh right away.
 - **One device per spool** (default on) — turn off if you only want the aggregate sensors.
 - **Auto-register new RFID spools loaded into the AMS** (default off; greyed out unless the [ha-bambulab](https://github.com/greghesp/ha-bambulab) printer integration is installed) — create library entries for official spools the AMS sees but the library lacks ([details](#auto-register-spools-you-load-into-the-ams)).
 - **Sync remaining weight from the AMS** (default off; needs ha-bambulab), **Mark a spool as empty when it is removed while a print was drawing from it** (default off; needs ha-bambulab), **Also mark as empty when removed with ≤ N % left** (default 0 = off; needs ha-bambulab), **Deduct print usage from manually created spools** (default off) — see [Keep remaining weights current](#keep-remaining-weights-current--without-opening-an-app).
@@ -109,7 +109,9 @@ The same form is shown as the **Features** step during setup and later behind th
 
 ## FAQ
 
-**Does this control my printer?** No. It only reads your cloud filament inventory. Nothing is sent to your printers.
+**Does this control my printer?** No. Nothing is ever sent to your printers. The integration reads and writes your *cloud filament library*; what it knows about your AMS comes from the Bambu Lab printer integration's sensors inside Home Assistant.
+
+**Do I need the Bambu Lab printer integration (ha-bambulab)?** Only for the AMS bridge features (auto-register, remaining-weight sync, runout detection). Library mirroring, the card, stock tracking and print-usage deduction work with the cloud account alone.
 
 **Why do I have to log in again after a few months?** Bambu cloud tokens expire after ~90 days and cannot be refreshed programmatically. Home Assistant will show a re-authentication prompt.
 
