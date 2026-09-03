@@ -77,6 +77,7 @@ This integration closes that gap. Enable **"Auto-remove manual duplicates when a
    [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=bambu_filaments)
 
 4. Sign in with your Bambu Lab account (region, email, password). If Bambu sends you a verification code by email, enter it when prompted.
+5. On the **Features** step pick what the integration should do beyond mirroring your library (auto-register, remaining-weight sync, runout detection, usage booking, auto-dedup, color language). All of it stays changeable later via the integration's *Configure* button.
 
 ## Devices & entities
 
@@ -97,7 +98,7 @@ This integration closes that gap. Enable **"Auto-remove manual duplicates when a
 
 ## Options
 
-Open the integration's *Configure* dialog:
+The same form is shown as the **Features** step during setup and later behind the integration's *Configure* button:
 
 - **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing.
 - **One device per spool** (default on) — turn off if you only want the aggregate sensors.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
@@ -80,6 +81,7 @@ class BambuFilamentsConfigFlow(ConfigFlow, domain=DOMAIN):
         self._region: str = REGION_GLOBAL
         self._email: str = ""
         self._tfa_key: str = ""
+        self._data: dict[str, Any] = {}
 
     @staticmethod
     @callback
@@ -101,7 +103,29 @@ class BambuFilamentsConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_mismatch(reason="wrong_account")
             return self.async_update_reload_and_abort(self._get_reauth_entry(), data=data)
         self._abort_if_unique_id_configured()
-        return self.async_create_entry(title=self._email, data=data)
+        self._data = data
+        return await self.async_step_features()
+
+    async def async_step_features(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Second setup step: the same feature toggles as the options dialog.
+
+        New users would otherwise never find the AMS bridge / usage booking
+        behind the Configure button; everything stays changeable there later.
+        """
+        has_bambulab = bambulab_available(self.hass)
+        if user_input is not None:
+            return self.async_create_entry(
+                title=self._email,
+                data=self._data,
+                options=clean_options_input(user_input, {}, has_bambulab),
+            )
+        return self.async_show_form(
+            step_id="features",
+            data_schema=build_options_schema({}, has_bambulab),
+            description_placeholders={"bambulab_url": BAMBULAB_REPO_URL},
+        )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -216,8 +240,107 @@ class BambuFilamentsConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_user()
 
 
+_UNAVAILABLE_KEYS = (
+    OPT_AUTO_REGISTER_UNAVAILABLE,
+    OPT_SYNC_REMAINING_UNAVAILABLE,
+    OPT_EMPTY_ON_RUNOUT_UNAVAILABLE,
+    OPT_EMPTY_PCT_UNAVAILABLE,
+)
+_AMS_OPTION_DEFAULTS = (
+    (OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER),
+    (OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING),
+    (OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT),
+    (OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT),
+)
+
+
+def build_options_schema(options: Mapping[str, Any], has_bambulab: bool) -> vol.Schema:
+    """The feature/option form - shared by the setup step and the options flow.
+
+    Without a loaded Bambu Lab printer integration the AMS-dependent fields
+    are shown read-only (greyed out) under placeholder keys with a hint.
+    """
+    pct_selector = lambda read_only: NumberSelector(  # noqa: E731
+        NumberSelectorConfig(
+            min=0, max=50, step=1, mode=NumberSelectorMode.BOX,
+            unit_of_measurement="%", read_only=read_only,
+        )
+    )
+    register_value = options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
+    remaining_value = options.get(OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING)
+    runout_value = options.get(OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT)
+    pct_value = options.get(OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT)
+    if has_bambulab:
+        ams_fields = {
+            vol.Required(OPT_AUTO_REGISTER, default=register_value): bool,
+            vol.Required(OPT_SYNC_REMAINING, default=remaining_value): bool,
+            vol.Required(OPT_EMPTY_ON_RUNOUT, default=runout_value): bool,
+            vol.Required(OPT_EMPTY_PCT, default=pct_value): pct_selector(False),
+        }
+    else:
+        # Greyed-out fields + hint (with link) while the printer integration
+        # that provides the AMS slot sensors is not installed/loaded.
+        ro = BooleanSelector(BooleanSelectorConfig(read_only=True))
+        ams_fields = {
+            vol.Optional(OPT_AUTO_REGISTER_UNAVAILABLE, default=register_value): ro,
+            vol.Optional(OPT_SYNC_REMAINING_UNAVAILABLE, default=remaining_value): ro,
+            vol.Optional(OPT_EMPTY_ON_RUNOUT_UNAVAILABLE, default=runout_value): ro,
+            vol.Optional(OPT_EMPTY_PCT_UNAVAILABLE, default=pct_value): pct_selector(True),
+        }
+    schema = vol.Schema(
+        {
+            vol.Required(
+                OPT_SCAN_INTERVAL,
+                default=options.get(OPT_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MIN),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=5, max=1440, step=1, mode=NumberSelectorMode.BOX,
+                    unit_of_measurement="min",
+                )
+            ),
+            vol.Required(
+                OPT_SPOOL_ENTITIES,
+                default=options.get(OPT_SPOOL_ENTITIES, DEFAULT_SPOOL_ENTITIES),
+            ): bool,
+            vol.Required(
+                OPT_AUTO_DEDUP,
+                default=options.get(OPT_AUTO_DEDUP, DEFAULT_AUTO_DEDUP),
+            ): bool,
+            **ams_fields,
+            vol.Required(
+                OPT_DEDUCT_USAGE,
+                default=options.get(OPT_DEDUCT_USAGE, DEFAULT_DEDUCT_USAGE),
+            ): bool,
+            vol.Required(
+                OPT_COLOR_LANG,
+                default=options.get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=COLOR_LANGS,
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key="color_language",
+                )
+            ),
+        }
+    )
+    return schema
+
+
+def clean_options_input(
+    user_input: dict[str, Any], options: Mapping[str, Any], has_bambulab: bool
+) -> dict[str, Any]:
+    """Drop read-only placeholders and keep the real values behind them."""
+    cleaned = dict(user_input)
+    for key in _UNAVAILABLE_KEYS:
+        cleaned.pop(key, None)
+    if not has_bambulab:
+        for key, default in _AMS_OPTION_DEFAULTS:
+            cleaned[key] = options.get(key, default)
+    return cleaned
+
+
 class BambuFilamentsOptionsFlow(OptionsFlow):
-    """Options: polling interval and per-spool entity behavior."""
+    """Options: the same feature form as the setup step."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -225,89 +348,11 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
         options = self.config_entry.options
         has_bambulab = bambulab_available(self.hass)
         if user_input is not None:
-            # The read-only placeholder is not a setting: drop it and keep
-            # whatever value the real option had.
-            for key in (
-                OPT_AUTO_REGISTER_UNAVAILABLE,
-                OPT_SYNC_REMAINING_UNAVAILABLE,
-                OPT_EMPTY_ON_RUNOUT_UNAVAILABLE,
-                OPT_EMPTY_PCT_UNAVAILABLE,
-            ):
-                user_input.pop(key, None)
-            if not has_bambulab:
-                for key, default in (
-                    (OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER),
-                    (OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING),
-                    (OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT),
-                    (OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT),
-                ):
-                    user_input[key] = options.get(key, default)
-            return self.async_create_entry(data=user_input)
-        pct_selector = lambda read_only: NumberSelector(  # noqa: E731
-            NumberSelectorConfig(
-                min=0, max=50, step=1, mode=NumberSelectorMode.BOX,
-                unit_of_measurement="%", read_only=read_only,
+            return self.async_create_entry(
+                data=clean_options_input(user_input, options, has_bambulab)
             )
-        )
-        register_value = options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
-        remaining_value = options.get(OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING)
-        runout_value = options.get(OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT)
-        pct_value = options.get(OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT)
-        if has_bambulab:
-            ams_fields = {
-                vol.Required(OPT_AUTO_REGISTER, default=register_value): bool,
-                vol.Required(OPT_SYNC_REMAINING, default=remaining_value): bool,
-                vol.Required(OPT_EMPTY_ON_RUNOUT, default=runout_value): bool,
-                vol.Required(OPT_EMPTY_PCT, default=pct_value): pct_selector(False),
-            }
-        else:
-            # Greyed-out fields + hint (with link) while the printer integration
-            # that provides the AMS slot sensors is not installed/loaded.
-            ro = BooleanSelector(BooleanSelectorConfig(read_only=True))
-            ams_fields = {
-                vol.Optional(OPT_AUTO_REGISTER_UNAVAILABLE, default=register_value): ro,
-                vol.Optional(OPT_SYNC_REMAINING_UNAVAILABLE, default=remaining_value): ro,
-                vol.Optional(OPT_EMPTY_ON_RUNOUT_UNAVAILABLE, default=runout_value): ro,
-                vol.Optional(OPT_EMPTY_PCT_UNAVAILABLE, default=pct_value): pct_selector(True),
-            }
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    OPT_SCAN_INTERVAL,
-                    default=options.get(OPT_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MIN),
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=5, max=1440, step=1, mode=NumberSelectorMode.BOX,
-                        unit_of_measurement="min",
-                    )
-                ),
-                vol.Required(
-                    OPT_SPOOL_ENTITIES,
-                    default=options.get(OPT_SPOOL_ENTITIES, DEFAULT_SPOOL_ENTITIES),
-                ): bool,
-                vol.Required(
-                    OPT_AUTO_DEDUP,
-                    default=options.get(OPT_AUTO_DEDUP, DEFAULT_AUTO_DEDUP),
-                ): bool,
-                **ams_fields,
-                vol.Required(
-                    OPT_DEDUCT_USAGE,
-                    default=options.get(OPT_DEDUCT_USAGE, DEFAULT_DEDUCT_USAGE),
-                ): bool,
-                vol.Required(
-                    OPT_COLOR_LANG,
-                    default=options.get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG),
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=COLOR_LANGS,
-                        mode=SelectSelectorMode.DROPDOWN,
-                        translation_key="color_language",
-                    )
-                ),
-            }
-        )
         return self.async_show_form(
             step_id="init",
-            data_schema=schema,
+            data_schema=build_options_schema(options, has_bambulab),
             description_placeholders={"bambulab_url": BAMBULAB_REPO_URL},
         )
