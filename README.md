@@ -1,8 +1,11 @@
 # Bambu Filaments for Home Assistant
 
+[![GitHub release](https://img.shields.io/github/v/release/Timmes123/ha-bambu-filaments)](https://github.com/Timmes123/ha-bambu-filaments/releases/latest)
+[![Pre-release](https://img.shields.io/github/v/release/Timmes123/ha-bambu-filaments?include_prereleases&label=pre-release&color=orange)](https://github.com/Timmes123/ha-bambu-filaments/releases)
 [![Validate](https://github.com/Timmes123/ha-bambu-filaments/actions/workflows/validate.yml/badge.svg)](https://github.com/Timmes123/ha-bambu-filaments/actions/workflows/validate.yml)
-[![GitHub release](https://img.shields.io/github/v/release/Timmes123/ha-bambu-filaments)](https://github.com/Timmes123/ha-bambu-filaments/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Timmes123/ha-bambu-filaments/blob/main/LICENSE)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![Downloads](https://img.shields.io/github/downloads/Timmes123/ha-bambu-filaments/total?label=downloads)](https://github.com/Timmes123/ha-bambu-filaments/releases)
+[![License](https://img.shields.io/github/license/Timmes123/ha-bambu-filaments)](https://github.com/Timmes123/ha-bambu-filaments/blob/main/LICENSE)
 [![Community Forum](https://img.shields.io/badge/community-forum-41BDF5.svg?logo=homeassistant&logoColor=white)](https://community.home-assistant.io/t/bambu-filaments-your-bambu-lab-cloud-filament-library-spools-colors-remaining-weight-in-ha/1022849)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-donate-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/timmes123)
 [![PayPal](https://img.shields.io/badge/PayPal-donate-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/timmes123)
