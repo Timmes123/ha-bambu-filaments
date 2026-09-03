@@ -49,12 +49,22 @@
           "auto_dedup_manual": "Auto-remove manual duplicates when a spool is loaded into the AMS",
           "color_language": "Color name language",
           "auto_register_ams": "Auto-register new RFID spools loaded into the AMS",
-          "auto_register_ams_unavailable": "Auto-register new RFID spools loaded into the AMS (unavailable)"
+          "auto_register_ams_unavailable": "Auto-register new RFID spools loaded into the AMS (unavailable)",
+          "sync_ams_remaining": "Sync remaining weight from the AMS to the cloud library",
+          "sync_ams_remaining_unavailable": "Sync remaining weight from the AMS to the cloud library (unavailable)",
+          "empty_on_removal_pct": "Mark a spool as empty when removed from the AMS with at most this much left (%, 0 = off)",
+          "empty_on_removal_pct_unavailable": "Mark a spool as empty when removed from the AMS with at most this much left (%, 0 = off) (unavailable)",
+          "deduct_print_usage": "Deduct print usage from manually created spools"
         },
         "data_description": {
           "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates.",
           "auto_register_ams": "When an official RFID spool sits in an AMS slot but is missing from the cloud library, it is added automatically - no need to open the Bambu app or Studio first. Uses the AMS slot sensors of the Bambu Lab printer integration.",
-          "auto_register_ams_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}"
+          "auto_register_ams_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
+          "sync_ams_remaining": "Pushes the AMS remaining-weight estimate of official RFID spools to the library whenever it changes - like Studio does, but without Studio running. A spool reading 0 % is booked as empty immediately. Uses the Bambu Lab printer integration.",
+          "sync_ams_remaining_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
+          "empty_on_removal_pct": "Catches the runout-and-swap case: a spool taken out of the AMS whose last reading was at or below this percentage is set to 0 g (the AMS estimate often sticks at 2-3 % when the spool is physically empty).",
+          "empty_on_removal_pct_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
+          "deduct_print_usage": "Bambu never books consumption for third-party spools. With this on, every print job finished after enabling is booked once against the manual spool the library shows in that AMS slot, using the per-slot grams the cloud records for the job. RFID spools are never touched; jobs already booked elsewhere are skipped. Cancelled jobs are booked proportionally when the printer integration saw the progress."
         }
       }
     }

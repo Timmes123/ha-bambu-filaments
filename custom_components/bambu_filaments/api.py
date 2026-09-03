@@ -230,6 +230,16 @@ class BambuCloudClient:
             raise BambuCloudError(f"AMS sync failed (HTTP {response.status_code})")
         return self._json(response)
 
+    def get_tasks(self, limit: int = 30) -> list[dict[str, Any]]:
+        """Recent print jobs of the account (all printers), newest first."""
+        response = self._request(
+            "get", f"{self._api}/v1/user-service/my/tasks?limit={int(limit)}"
+        )
+        if response.status_code != 200:
+            raise BambuCloudError(f"Fetching print jobs failed (HTTP {response.status_code})")
+        data = self._json(response)
+        return [h for h in (data.get("hits") or []) if isinstance(h, dict)]
+
     def delete_spools(self, spool_ids: list[int]) -> None:
         """Delete spools by cloud id (idempotent on the server side)."""
         response = self._request(

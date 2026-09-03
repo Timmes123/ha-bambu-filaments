@@ -52,6 +52,48 @@ def bambulab_available(hass: HomeAssistant) -> bool:
     )
 
 
+_PRINT_STATUS_RE = re.compile(r"^(?P<serial>[^_]+)_print_status$")
+_BUSY_STATES = {"running", "pause", "prepare", "slicing", "init"}
+
+
+def _entity_by_unique_id(hass: HomeAssistant, unique_id: str) -> str | None:
+    return er.async_get(hass).async_get_entity_id("sensor", BAMBULAB_DOMAIN, unique_id)
+
+
+def printer_busy(hass: HomeAssistant, printer_serial: str) -> bool:
+    """Printing/pausing/preparing - Studio applies its push cooldown only then."""
+    entity_id = _entity_by_unique_id(hass, f"{printer_serial}_print_status")
+    state = hass.states.get(entity_id) if entity_id else None
+    return bool(state and state.state in _BUSY_STATES)
+
+
+def printer_progress(hass: HomeAssistant, printer_serial: str) -> int | None:
+    """Current print progress in percent, if the printer integration knows it."""
+    entity_id = _entity_by_unique_id(hass, f"{printer_serial}_print_progress")
+    state = hass.states.get(entity_id) if entity_id else None
+    try:
+        return int(float(state.state)) if state else None
+    except (TypeError, ValueError):
+        return None
+
+
+def watched_entity_ids(hass: HomeAssistant) -> dict[str, tuple[str, str]]:
+    """Bambu Lab entities worth reacting to: tray sensors + print status.
+
+    Returns {entity_id: (printer_serial, kind)} with kind "tray" or "status".
+    """
+    found: dict[str, tuple[str, str]] = {}
+    for entry in er.async_get(hass).entities.values():
+        if entry.platform != BAMBULAB_DOMAIN or entry.domain != "sensor" or entry.disabled:
+            continue
+        uid = entry.unique_id or ""
+        if m := _AMS_TRAY_RE.match(uid):
+            found[entry.entity_id] = (m.group("serial"), "tray")
+        elif m := _PRINT_STATUS_RE.match(uid):
+            found[entry.entity_id] = (m.group("serial"), "status")
+    return found
+
+
 def _valid_uid(value: Any) -> bool:
     """Bambu's own rule (FilamentSpool::is_valid_tag_uid): non-empty, not all zeros."""
     return isinstance(value, str) and bool(value) and any(c != "0" for c in value)

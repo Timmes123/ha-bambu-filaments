@@ -43,6 +43,9 @@ from .const import (
     DEFAULT_AUTO_DEDUP,
     DEFAULT_AUTO_REGISTER,
     DEFAULT_COLOR_LANG,
+    DEFAULT_DEDUCT_USAGE,
+    DEFAULT_EMPTY_PCT,
+    DEFAULT_SYNC_REMAINING,
     DEFAULT_SCAN_INTERVAL_MIN,
     DEFAULT_SPOOL_ENTITIES,
     DOMAIN,
@@ -50,6 +53,11 @@ from .const import (
     OPT_AUTO_REGISTER,
     OPT_AUTO_REGISTER_UNAVAILABLE,
     OPT_COLOR_LANG,
+    OPT_DEDUCT_USAGE,
+    OPT_EMPTY_PCT,
+    OPT_EMPTY_PCT_UNAVAILABLE,
+    OPT_SYNC_REMAINING,
+    OPT_SYNC_REMAINING_UNAVAILABLE,
     OPT_SCAN_INTERVAL,
     OPT_SPOOL_ENTITIES,
     REGION_GLOBAL,
@@ -216,24 +224,43 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
         if user_input is not None:
             # The read-only placeholder is not a setting: drop it and keep
             # whatever value the real option had.
-            user_input.pop(OPT_AUTO_REGISTER_UNAVAILABLE, None)
+            for key in (
+                OPT_AUTO_REGISTER_UNAVAILABLE,
+                OPT_SYNC_REMAINING_UNAVAILABLE,
+                OPT_EMPTY_PCT_UNAVAILABLE,
+            ):
+                user_input.pop(key, None)
             if not has_bambulab:
-                user_input[OPT_AUTO_REGISTER] = options.get(
-                    OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER
-                )
+                for key, default in (
+                    (OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER),
+                    (OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING),
+                    (OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT),
+                ):
+                    user_input[key] = options.get(key, default)
             return self.async_create_entry(data=user_input)
-        auto_register_value = options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
+        pct_selector = lambda read_only: NumberSelector(  # noqa: E731
+            NumberSelectorConfig(
+                min=0, max=50, step=1, mode=NumberSelectorMode.BOX,
+                unit_of_measurement="%", read_only=read_only,
+            )
+        )
+        register_value = options.get(OPT_AUTO_REGISTER, DEFAULT_AUTO_REGISTER)
+        remaining_value = options.get(OPT_SYNC_REMAINING, DEFAULT_SYNC_REMAINING)
+        pct_value = options.get(OPT_EMPTY_PCT, DEFAULT_EMPTY_PCT)
         if has_bambulab:
-            auto_register_field = {
-                vol.Required(OPT_AUTO_REGISTER, default=auto_register_value): bool
+            ams_fields = {
+                vol.Required(OPT_AUTO_REGISTER, default=register_value): bool,
+                vol.Required(OPT_SYNC_REMAINING, default=remaining_value): bool,
+                vol.Required(OPT_EMPTY_PCT, default=pct_value): pct_selector(False),
             }
         else:
-            # Greyed-out toggle + hint (with link) while the printer integration
+            # Greyed-out fields + hint (with link) while the printer integration
             # that provides the AMS slot sensors is not installed/loaded.
-            auto_register_field = {
-                vol.Optional(
-                    OPT_AUTO_REGISTER_UNAVAILABLE, default=auto_register_value
-                ): BooleanSelector(BooleanSelectorConfig(read_only=True))
+            ro = BooleanSelector(BooleanSelectorConfig(read_only=True))
+            ams_fields = {
+                vol.Optional(OPT_AUTO_REGISTER_UNAVAILABLE, default=register_value): ro,
+                vol.Optional(OPT_SYNC_REMAINING_UNAVAILABLE, default=remaining_value): ro,
+                vol.Optional(OPT_EMPTY_PCT_UNAVAILABLE, default=pct_value): pct_selector(True),
             }
         schema = vol.Schema(
             {
@@ -254,7 +281,11 @@ class BambuFilamentsOptionsFlow(OptionsFlow):
                     OPT_AUTO_DEDUP,
                     default=options.get(OPT_AUTO_DEDUP, DEFAULT_AUTO_DEDUP),
                 ): bool,
-                **auto_register_field,
+                **ams_fields,
+                vol.Required(
+                    OPT_DEDUCT_USAGE,
+                    default=options.get(OPT_DEDUCT_USAGE, DEFAULT_DEDUCT_USAGE),
+                ): bool,
                 vol.Required(
                     OPT_COLOR_LANG,
                     default=options.get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG),

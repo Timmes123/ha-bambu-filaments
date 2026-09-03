@@ -27,6 +27,7 @@ This integration is about your **account-level spool inventory**. It complements
 - **Official color names** — spool colors are resolved to Bambu's localized webshop color names and color codes via the public Bambu Studio color database (fetched at runtime and cached).
 - **Aggregate sensors** on the hub device — number of active spools (full inventory and per-material remaining weights as attributes) and total remaining filament in grams.
 - **Bidirectional sync** — spools added or removed in Bambu Studio or the Bambu app appear/disappear in Home Assistant on the next poll; spools created or deleted from Home Assistant appear there too.
+- **Remaining weights that stay current** — AMS estimates pushed to the library without Studio running, runout detection, and print-usage deduction for third-party spools ([details below](#keep-remaining-weights-current--without-opening-an-app)).
 - **Auto-register spools loaded into the AMS** — no more opening the Bambu app just so the cloud learns about the spool you just inserted ([details below](#auto-register-spools-you-load-into-the-ams); requires the [ha-bambulab](https://github.com/greghesp/ha-bambulab) printer integration).
 - **Stock tracking without duplicates** — pre-register sealed spools manually and let the integration auto-remove the manual entry the moment the real spool is first loaded into the AMS ([details below](#track-unopened-stock--without-duplicates)) — something even Bambu's own apps can't do.
 - **Write actions** — `set_remaining`, `set_note`, `set_filament_id`, `update_spool`, `create_spool`, `delete_spool`; plus `refresh` to poll on demand.
@@ -41,6 +42,18 @@ Bambu's own apps only add a freshly loaded official spool to the cloud library o
 Enable **"Auto-register new RFID spools loaded into the AMS"** in the integration options and the integration does it for you: on every sync it compares the RFID spools currently sitting in your AMS units with the library and creates the missing ones exactly the way Studio does — same brand/product/color, remaining weight from the AMS, and the printer/AMS/slot position. Spools you deliberately deleted from the library while they were still loaded are left alone.
 
 > **Requires the [Bambu Lab printer integration (ha-bambulab)](https://github.com/greghesp/ha-bambulab).** Its AMS slot sensors are the only source for what is physically in your AMS — the cloud library API itself does not know about unregistered spools. Without that integration the option is greyed out in the options dialog. Nothing needs to be configured: printers and AMS units are detected from the sensors automatically. Third-party spools (no RFID) are never touched.
+
+## Keep remaining weights current — without opening an app
+
+Your printer never talks to the filament library. Remaining weights only change when Bambu Studio or the Bambu app is open and pushes the AMS estimate — so a spool that ran out overnight still shows as half full the next day, and third-party spools never move at all (verified against the Studio source and real prints).
+
+Three options in the integration settings close that gap, each independently switchable:
+
+- **Sync remaining weight from the AMS** — every change of the AMS estimate for official RFID spools is pushed to the library (same cloud call Studio uses, same 10-minute cooldown while printing). A slot reading 0 % books the spool as empty immediately.
+- **Mark a spool as empty when removed with ≤ N % left** (default 5 %) — catches the runout-and-swap case where the 0 % reading was never seen, because the AMS estimate tends to stick at 2–3 % on a physically empty spool.
+- **Deduct print usage from manually created spools** — Bambu books nothing for third-party spools. With this on, every print job finished after enabling is booked **once** against the manual spool the library shows in that slot, using the per-slot grams the cloud records for the job (multi-color prints included, prints started from the printer or the app included). Processed jobs are remembered, jobs already booked elsewhere are skipped, RFID spools are never touched, cancelled jobs are booked proportionally when the progress was observed. Accuracy is that of the slicer estimate (purge and prime-tower waste is only partly included).
+
+> The first two need the [Bambu Lab printer integration (ha-bambulab)](https://github.com/greghesp/ha-bambulab) and are greyed out without it. Usage deduction works from the cloud alone.
 
 ## Track unopened stock — without duplicates
 
@@ -86,6 +99,7 @@ Open the integration's *Configure* dialog:
 - **Polling interval** (default 15 min) — the cloud data changes slowly; Bambu itself syncs AMS weights at most every 10 minutes while printing.
 - **One device per spool** (default on) — turn off if you only want the aggregate sensors.
 - **Auto-register new RFID spools loaded into the AMS** (default off; greyed out unless the [ha-bambulab](https://github.com/greghesp/ha-bambulab) printer integration is installed) — create library entries for official spools the AMS sees but the library lacks ([details](#auto-register-spools-you-load-into-the-ams)).
+- **Sync remaining weight from the AMS** (default off; needs ha-bambulab), **Mark a spool as empty when removed with ≤ N % left** (default 5 %, 0 = off; needs ha-bambulab), **Deduct print usage from manually created spools** (default off) — see [Keep remaining weights current](#keep-remaining-weights-current--without-opening-an-app).
 - **Auto-remove manual duplicates** (default off) — when a new AMS-registered spool appears, delete one matching full, manually created spool from the cloud library ([details](#track-unopened-stock--without-duplicates)).
 - **Color name language** (default automatic) — force English or German color names; Bambu's own database leaves some colors untranslated, those fall back to English.
 
