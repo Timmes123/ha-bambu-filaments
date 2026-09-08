@@ -6,7 +6,27 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "1.8.2";
+const CARD_VERSION = "1.8.3";
+
+// HA's frontend service worker matches its cache entries without the query
+// string, so the ?v=<version> bump on the Lovelace resource does not defeat it
+// and a plain reload keeps serving the old card. Drop our own cache entries
+// first, then reload.
+const CARD_FILE = "bambu-filaments-card.js";
+
+async function reloadCard() {
+  try {
+    for (const key of await caches.keys()) {
+      const cache = await caches.open(key);
+      for (const req of await cache.keys()) {
+        if (req.url.includes(CARD_FILE)) await cache.delete(req);
+      }
+    }
+  } catch (e) {
+    console.warn("bambu-filaments-card: could not clear the card cache", e);
+  }
+  location.reload();
+}
 
 console.info(
   "%c BAMBU-FILAMENTS-CARD %c v" + CARD_VERSION + " ",
@@ -411,7 +431,7 @@ class BambuFilamentsCard extends HTMLElement {
     this.shadowRoot.querySelector(".addrow")?.addEventListener("click", () => {
       this._openDialog(t, null);
     });
-    this.shadowRoot.querySelector(".stale-btn")?.addEventListener("click", () => location.reload());
+    this.shadowRoot.querySelector(".stale-btn")?.addEventListener("click", () => reloadCard());
 
     this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
       el.addEventListener("click", () => {
