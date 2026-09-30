@@ -65,8 +65,9 @@ class BambuCloudClient:
     def _web(self) -> str:
         return "https://bambulab.cn" if self._region == "china" else "https://bambulab.com"
 
-    def _request(self, method: str, url: str, body: dict | None = None, auth: bool = True):
-        headers = {}
+    def _request(self, method: str, url: str, body: dict | None = None, auth: bool = True,
+                 extra_headers: dict | None = None):
+        headers = dict(extra_headers or {})
         if auth and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         try:
@@ -154,11 +155,19 @@ class BambuCloudClient:
 
     def login_with_tfa(self, tfa_key: str, code: str) -> str:
         """Complete a two-factor login. The token is returned via cookie."""
+        # bambulab.com now rejects the TFA sign-in without a CSRF token: fetch it
+        # first (GET /api/csrf: cookie bbl_csrf_token, HTTP 204) and send it back as cookie and
+        # x-bbl-csrf-token header, as the browser and ha-bambulab (pybambu) do.
+        csrf_response = self._request("get", f"{self._web}/api/csrf", auth=False)
+        csrf = csrf_response.cookies.get("bbl_csrf_token")
+        if csrf_response.status_code not in (200, 204) or not csrf:
+            raise BambuCloudError(f"Could not obtain CSRF token (HTTP {csrf_response.status_code})")
         response = self._request(
             "post",
             f"{self._web}/api/sign-in/tfa",
             body={"tfaKey": tfa_key, "tfaCode": code},
             auth=False,
+            extra_headers={"x-bbl-csrf-token": csrf, "Cookie": f"bbl_csrf_token={csrf}"},
         )
         token = response.cookies.get("token")
         if response.status_code == 200 and token:
