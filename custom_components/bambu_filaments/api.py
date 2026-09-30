@@ -155,7 +155,7 @@ class BambuCloudClient:
 
     def login_with_tfa(self, tfa_key: str, code: str) -> str:
         """Complete a two-factor login. The token is returned via cookie."""
-        # bambulab.com now rejects the TFA sign-in without a CSRF token: fetch it
+        # bambulab.com now rejects the 2FA sign-in without a CSRF token: fetch it
         # first (GET /api/csrf: cookie bbl_csrf_token, HTTP 204) and send it back as cookie and
         # x-bbl-csrf-token header, as the browser and ha-bambulab (pybambu) do.
         csrf_response = self._request("get", f"{self._web}/api/csrf", auth=False)
