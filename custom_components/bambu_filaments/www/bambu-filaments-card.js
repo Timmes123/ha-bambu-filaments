@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "1.8.3";
+const CARD_VERSION = "1.8.4";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
