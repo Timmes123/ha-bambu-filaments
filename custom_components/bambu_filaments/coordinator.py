@@ -9,7 +9,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.core import Event, EventStateChangedData, callback
+from homeassistant.core import Event, EventStateChangedData, State, callback
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
@@ -18,11 +18,15 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import AuthExpired, BambuCloudClient, BambuCloudError
 from .ams_register import (
     MountedTray,
+    TraySlot,
     bambulab_available,
     build_ams_sync_item,
     printer_busy,
     printer_progress,
+    printer_running,
     scan_mounted_rfid_trays,
+    tray_has_rfid,
+    tray_slot,
     watched_entity_ids,
 )
 from .usage import UsageDeductor, find_mounted_manual_spool, slot_from_mapping
@@ -112,6 +116,10 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         # Progress snapshot per printer taken when a print stops - lets a
         # cancelled job be booked proportionally.
         self._last_progress: dict[str, tuple[int, datetime]] = {}
+        # Tray sensors of slots without RFID that ran empty under a running
+        # print, until the next AMS pass: slot + id of the manual spool the
+        # library showed there at that moment.
+        self._manual_runouts: dict[str, tuple[TraySlot, int]] = {}
         self.usage = UsageDeductor(hass, entry.entry_id)
         self._unsub_listener = None
         self._listener_ids: set[str] = set()
@@ -182,6 +190,9 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             await self._async_sync_remaining(data, trays)
         self._last_remain = {t.tray_uuid: (t.remain, t) for t in trays}
         self._track_printing_from(trays)
+        manual_runouts, self._manual_runouts = self._manual_runouts, {}
+        if runout and manual_runouts:
+            await self._async_mark_manual_runout(data, manual_runouts)
         return data
 
     def _track_printing_from(self, trays: list[MountedTray]) -> None:
@@ -231,6 +242,8 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         if new is None:
             return
         serial, kind = self._watched.get(event.data["entity_id"], ("", ""))
+        if kind == "tray" and old is not None:
+            self._note_manual_runout(event.data["entity_id"], serial, old, new)
         if kind == "status" and old is not None and old.state != new.state:
             # A print just stopped: remember how far it got, so a cancelled
             # job can be booked proportionally (the cloud only knows the plan).
@@ -241,6 +254,36 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         elif old is not None and old.state == new.state and old.attributes == new.attributes:
             return
         self.hass.async_create_task(self._event_debouncer.async_call())
+
+    @callback
+    def _note_manual_runout(self, entity_id: str, serial: str, old: State, new: State) -> None:
+        """Remember a slot without RFID that runs empty under a running print.
+
+        The AMS reports no remaining percentage for these spools, so the
+        active slot turning empty while the printer prints is the runout
+        signal; a removal while the print is paused counts as a filament
+        change. The spool is looked up now: Bambu Studio, when open, drops
+        the slot assignment of an emptied slot within seconds.
+        """
+        if not (
+            self._opt(OPT_EMPTY_ON_RUNOUT, DEFAULT_EMPTY_ON_RUNOUT)
+            and new.attributes.get("empty")
+            and not old.attributes.get("empty")
+            and old.attributes.get("active")
+            and not tray_has_rfid(old.attributes)
+            and printer_running(self.hass, serial)
+        ):
+            return
+        slot = tray_slot(self.hass, entity_id)
+        if slot is None:
+            return
+        spool = find_mounted_manual_spool(
+            self.data or {}, slot.printer_serial, slot.ams_id, slot.slot_id
+        )
+        if spool is None:
+            _LOGGER.debug("Runout in %s, but the library shows no manual spool there", slot.location)
+            return
+        self._manual_runouts[entity_id] = (slot, spool["id"])
 
     async def async_shutdown(self) -> None:
         if self._unsub_listener is not None:
@@ -379,6 +422,50 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
                 spool.get("filamentVendor"), spool.get("filamentName"), spool.get("color"),
                 reason, tray.location,
             )
+
+    async def _async_mark_manual_runout(
+        self,
+        data: dict[int, dict[str, Any]],
+        runouts: dict[str, tuple[TraySlot, int]],
+    ) -> None:
+        """Runout rule for spools without RFID (slots noted by the tray listener).
+
+        The manual spool the library showed in the slot is set to 0 g if the
+        slot is still empty (a short sensor dropout is no runout) and the
+        spool is not assigned to another slot by now. An assignment Studio
+        dropped in the meantime does not matter.
+        """
+        for entity_id, (slot, spool_id) in runouts.items():
+            state = self.hass.states.get(entity_id)
+            if state is None or not state.attributes.get("empty"):
+                _LOGGER.debug("%s is no longer empty - not treated as a runout", slot.location)
+                continue
+            spool = data.get(spool_id)
+            if spool is None or spool.get("RFID") or int(spool.get("netWeight") or 0) == 0:
+                continue
+            same_slot = (
+                spool.get("devId") == slot.printer_serial
+                and str(spool.get("amsId")) == str(slot.ams_id)
+                and str(spool.get("slotId")) == slot.slot_id
+            )
+            if spool.get("inPrinter") and not same_slot:
+                continue
+            try:
+                await self.hass.async_add_executor_job(
+                    self.client.update_spool,
+                    {"id": spool["id"], "filamentName": spool.get("filamentName") or "", "netWeight": 0},
+                )
+            except (AuthExpired, BambuCloudError) as err:
+                _LOGGER.warning("Could not mark run-out spool %s as empty: %s", spool["id"], err)
+                continue
+            _LOGGER.info(
+                "Spool %s %s %s ran out in %s during a print - marked empty (was %s g)",
+                spool.get("filamentVendor"), spool.get("filamentName"),
+                spool.get("displayName") or spool.get("color"), slot.location,
+                spool.get("netWeight"),
+            )
+            spool["netWeight"] = 0
+            spool["depleted"] = True
 
     # ------------------------------------------------------- usage booking
 
