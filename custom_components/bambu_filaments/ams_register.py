@@ -67,6 +67,13 @@ def printer_busy(hass: HomeAssistant, printer_serial: str) -> bool:
     return bool(state and state.state in _BUSY_STATES)
 
 
+def printer_running(hass: HomeAssistant, printer_serial: str) -> bool:
+    """Actively printing (not paused) - a slot that runs empty now is a runout."""
+    entity_id = _entity_by_unique_id(hass, f"{printer_serial}_print_status")
+    state = hass.states.get(entity_id) if entity_id else None
+    return bool(state and state.state == "running")
+
+
 def printer_progress(hass: HomeAssistant, printer_serial: str) -> int | None:
     """Current print progress in percent, if the printer integration knows it."""
     entity_id = _entity_by_unique_id(hass, f"{printer_serial}_print_progress")
@@ -97,6 +104,14 @@ def watched_entity_ids(hass: HomeAssistant) -> dict[str, tuple[str, str]]:
 def _valid_uid(value: Any) -> bool:
     """Bambu's own rule (FilamentSpool::is_valid_tag_uid): non-empty, not all zeros."""
     return isinstance(value, str) and bool(value) and any(c != "0" for c in value)
+
+
+def tray_has_rfid(attrs: Any) -> bool:
+    """The tray sensor reports an official spool's 32-hex cloud uuid."""
+    # Official spools carry both a 16-hex NFC tag id and a 32-hex cloud
+    # uuid; third-party spools report all zeros for both.
+    tray_uuid = str(attrs.get("tray_uuid") or "").upper()
+    return bool(_HEX32_RE.match(tray_uuid)) and _valid_uid(tray_uuid)
 
 
 @dataclass
@@ -141,32 +156,17 @@ def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
         attrs = state.attributes
         if attrs.get("empty") or attrs.get("unknown"):
             continue
+        if not tray_has_rfid(attrs) or not _valid_uid(attrs.get("tag_uid")):
+            continue
         tray_uuid = str(attrs.get("tray_uuid") or "").upper()
-        # Official spools carry both a 16-hex NFC tag id and a 32-hex cloud
-        # uuid; third-party spools report all zeros for both.
-        if not _HEX32_RE.match(tray_uuid) or not _valid_uid(tray_uuid):
-            continue
-        if not _valid_uid(attrs.get("tag_uid")):
-            continue
         filament_id = str(attrs.get("filament_id") or "")
         if not filament_id:
             continue
 
-        # The AMS index (cloud amsId) comes from ha-bambulab's device name:
-        # regular units are named 1-based (AMS_1 -> 0), AMS HT keeps 128+.
-        device = dev_reg.async_get(entry.device_id) if entry.device_id else None
-        if device is None:
+        location = _tray_location(dev_reg, entry, match, attrs)
+        if location is None:
             continue
-        index_match = _AMS_DEVICE_INDEX_RE.search(device.name or "")
-        if index_match is None:
-            _LOGGER.debug("Auto-register: cannot derive AMS index for %s", entry.entity_id)
-            continue
-        n = int(index_match.group("n"))
-        ams_id = n - 1 if n < 128 else n
-        printer_name = match.group("dev")
-        printer_dev = dev_reg.async_get(device.via_device_id) if device.via_device_id else None
-        if printer_dev is not None:
-            printer_name = printer_dev.name_by_user or printer_dev.name or printer_name
+        ams_id, slot_id, printer_name, ams_model = location
         try:
             tray_weight = int(float(attrs.get("tray_weight") or 0))
         except (TypeError, ValueError):
@@ -175,10 +175,6 @@ def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
             remain = int(attrs.get("remain", -1))
         except (TypeError, ValueError):
             remain = -1
-        try:
-            slot_id = str(max(0, int(attrs.get("slot") or match.group("n")) - 1))
-        except (TypeError, ValueError):
-            slot_id = str(int(match.group("n")) - 1)
         trays.append(
             MountedTray(
                 entity_id=entry.entity_id,
@@ -192,13 +188,77 @@ def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
                 printer_serial=match.group("serial"),
                 printer_name=printer_name,
                 ams_serial=match.group("ams"),
-                ams_model=device.model or "",
+                ams_model=ams_model,
                 ams_id=ams_id,
                 slot_id=slot_id,
                 active=bool(attrs.get("active")),
             )
         )
     return trays
+
+
+def _tray_location(
+    dev_reg: dr.DeviceRegistry,
+    entry: er.RegistryEntry,
+    match: re.Match[str],
+    attrs: Any,
+) -> tuple[int, str, str, str] | None:
+    """(cloud amsId, 0-based slotId, printer name, AMS model) of a tray sensor."""
+    # The AMS index (cloud amsId) comes from ha-bambulab's device name:
+    # regular units are named 1-based (AMS_1 -> 0), AMS HT keeps 128+.
+    device = dev_reg.async_get(entry.device_id) if entry.device_id else None
+    if device is None:
+        return None
+    index_match = _AMS_DEVICE_INDEX_RE.search(device.name or "")
+    if index_match is None:
+        _LOGGER.debug("Cannot derive the AMS index for %s", entry.entity_id)
+        return None
+    n = int(index_match.group("n"))
+    ams_id = n - 1 if n < 128 else n
+    printer_name = match.group("dev")
+    printer_dev = dev_reg.async_get(device.via_device_id) if device.via_device_id else None
+    if printer_dev is not None:
+        printer_name = printer_dev.name_by_user or printer_dev.name or printer_name
+    try:
+        slot_id = str(max(0, int(attrs.get("slot") or match.group("n")) - 1))
+    except (TypeError, ValueError):
+        slot_id = str(int(match.group("n")) - 1)
+    return ams_id, slot_id, printer_name, device.model or ""
+
+
+@dataclass(frozen=True)
+class TraySlot:
+    """Cloud position of one AMS tray sensor, whatever spool it holds."""
+
+    printer_serial: str
+    printer_name: str
+    ams_model: str
+    ams_id: int
+    slot_id: str
+
+    @property
+    def location(self) -> str:
+        return f"{self.printer_name} {self.ams_model or 'AMS'} slot {int(self.slot_id) + 1}"
+
+
+def tray_slot(hass: HomeAssistant, entity_id: str) -> TraySlot | None:
+    """Position of an AMS tray sensor as the cloud stores it for a spool.
+
+    The printer serial from the sensor's unique_id is the cloud `devId`
+    (auto-register's ams/sync calls rely on the same identity).
+    """
+    entry = er.async_get(hass).async_get(entity_id)
+    match = _AMS_TRAY_RE.match(entry.unique_id or "") if entry is not None else None
+    if entry is None or match is None:
+        return None
+    state = hass.states.get(entity_id)
+    location = _tray_location(
+        dr.async_get(hass), entry, match, state.attributes if state is not None else {}
+    )
+    if location is None:
+        return None
+    ams_id, slot_id, printer_name, ams_model = location
+    return TraySlot(match.group("serial"), printer_name, ams_model, ams_id, slot_id)
 
 
 def build_ams_sync_item(
