@@ -29,7 +29,15 @@ from .ams_register import (
     tray_slot,
     watched_entity_ids,
 )
-from .usage import UsageDeductor, find_mounted_manual_spool, slot_from_mapping
+from .usage import (
+    BackupSwitch,
+    PendingRunout,
+    UsageDeductor,
+    find_mounted_manual_spool,
+    slot_from_mapping,
+    split_usage,
+    switches_for_task,
+)
 from .colors import BambuColorDB
 from .const import (
     DEFAULT_AUTO_DEDUP,
@@ -244,6 +252,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         serial, kind = self._watched.get(event.data["entity_id"], ("", ""))
         if kind == "tray" and old is not None:
             self._note_manual_runout(event.data["entity_id"], serial, old, new)
+            self._track_backup_switch(event.data["entity_id"], serial, old, new)
         if kind == "status" and old is not None and old.state != new.state:
             # A print just stopped: remember how far it got, so a cancelled
             # job can be booked proportionally (the cloud only knows the plan).
@@ -251,6 +260,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
                 progress = printer_progress(self.hass, serial)
                 if progress is not None:
                     self._last_progress[serial] = (progress, dt_util.utcnow())
+                self.usage.drop_pending(serial)
         elif old is not None and old.state == new.state and old.attributes == new.attributes:
             return
         self.hass.async_create_task(self._event_debouncer.async_call())
@@ -284,6 +294,75 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             _LOGGER.debug("Runout in %s, but the library shows no manual spool there", slot.location)
             return
         self._manual_runouts[entity_id] = (slot, spool["id"])
+
+    @callback
+    def _track_backup_switch(self, entity_id: str, serial: str, old: State, new: State) -> None:
+        """Notice an AMS backup switch, so usage booking can split the job.
+
+        Step 1: the active slot of a running print reports empty. Step 2:
+        another slot with the same profile and color becomes the active one -
+        the AMS continues from its backup spool. The print progress at step 2
+        is where the job's grams move from one spool to the other (the slot
+        reports empty while the tube still holds filament).
+        """
+        if not self._opt(OPT_DEDUCT_USAGE, DEFAULT_DEDUCT_USAGE):
+            return
+        was_empty = bool(old.attributes.get("empty"))
+        is_empty = bool(new.attributes.get("empty"))
+        if is_empty and not was_empty:
+            if not (old.attributes.get("active") and printer_running(self.hass, serial)):
+                return
+            slot = tray_slot(self.hass, entity_id)
+            if slot is None:
+                return
+            spool = find_mounted_manual_spool(
+                self.data or {}, slot.printer_serial, slot.ams_id, slot.slot_id
+            )
+            self.usage.set_pending(serial, PendingRunout(
+                pos=(slot.ams_id, int(slot.slot_id)),
+                filament_id=str(old.attributes.get("filament_id") or ""),
+                color=_hex6(old.attributes.get("color")),
+                spool_id=spool["id"] if spool is not None else None,
+                when=dt_util.utcnow(),
+            ))
+            return
+        pending = self.usage.pending.get(serial)
+        if pending is None or is_empty:
+            return
+        if not (new.attributes.get("active") and not old.attributes.get("active")):
+            return
+        slot = tray_slot(self.hass, entity_id)
+        if slot is None:
+            return
+        pos = (slot.ams_id, int(slot.slot_id))
+        if pos == pending.pos:
+            # The run-out slot was refilled and feeds again - no backup switch.
+            self.usage.drop_pending(serial)
+            return
+        if (
+            str(new.attributes.get("filament_id") or "") != pending.filament_id
+            or _hex6(new.attributes.get("color")) != pending.color
+        ):
+            return  # another filament of a multi-color print, not the backup
+        self.usage.drop_pending(serial)
+        progress = printer_progress(self.hass, serial)
+        if progress is None:
+            _LOGGER.debug("Backup switch to %s seen, but the print progress is unknown", slot.location)
+            return
+        self.usage.add_switch(
+            BackupSwitch(
+                printer_serial=serial,
+                from_pos=pending.pos,
+                to_pos=pos,
+                fraction=max(0.0, min(1.0, progress / 100)),
+                when=dt_util.utcnow(),
+                spool_id=pending.spool_id,
+            )
+        )
+        _LOGGER.info(
+            "AMS backup switch at %s %%: the print continues from %s - the job "
+            "will be booked against both spools", progress, slot.location,
+        )
 
     async def async_shutdown(self) -> None:
         if self._unsub_listener is not None:
@@ -475,11 +554,13 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         await self.usage.async_set_enabled(enabled)
         if not enabled:
             return
+        await self.usage.async_prune(dt_util.utcnow())
         try:
             tasks = await self.hass.async_add_executor_job(self.client.get_tasks, 30)
         except (AuthExpired, BambuCloudError) as err:
             _LOGGER.debug("Usage booking: fetching print jobs failed: %s", err)
             return
+        self.usage.forget_parts_except({t.get("id") for t in tasks})
         for task in self.usage.select_tasks(tasks):
             factor = 1.0
             if task.get("status") != 2:
@@ -491,66 +572,147 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
                     )
                     await self.usage.async_mark_done(task["id"])
                     continue
+            # The cloud only knows the planned slot; an AMS backup switch
+            # seen during the job moves the rest of it to the backup slot.
+            switches = switches_for_task(task, self.usage.switches)
+            # Parts settled in an earlier attempt (the cloud rejected another
+            # part of this job then) are not booked a second time.
+            settled = self.usage.settled_parts(task["id"])
             booked = True
-            for item in task.get("amsDetailMapping") or []:
+            for index, item in enumerate(task.get("amsDetailMapping") or []):
                 if not isinstance(item, dict):
                     continue
                 try:
-                    grams = float(item.get("weight") or 0) * factor
+                    planned = float(item.get("weight") or 0)
                 except (TypeError, ValueError):
                     continue
-                if grams <= 0:
+                if planned <= 0 or factor <= 0:
                     continue
                 position = slot_from_mapping(item)
                 if position is None:
                     _LOGGER.debug("Usage booking: job %s entry without slot: %s", task.get("id"), item)
                     continue
-                spool = find_mounted_manual_spool(data, task.get("deviceId"), *position)
-                if spool is None:
-                    _LOGGER.debug(
-                        "Usage booking: no manual spool mounted for job %s at AMS %s slot %s",
-                        task.get("id"), position[0], position[1] + 1,
-                    )
-                    continue
-                fid_task, fid_spool = item.get("filamentId") or "", spool.get("filamentId") or ""
-                if fid_task and fid_spool and fid_task != fid_spool:
-                    _LOGGER.warning(
-                        "Usage booking: job %s used %s in %s slot %s but the library has %s "
-                        "(%s %s) there - not booked",
-                        task.get("id"), fid_task, task.get("deviceName"), position[1] + 1,
-                        fid_spool, spool.get("filamentVendor"), spool.get("filamentName"),
-                    )
-                    continue
-                previous = (self.data or {}).get(spool["id"])
-                if self.usage.foreign_change_detected(previous, spool, grams):
-                    _LOGGER.info(
-                        "Usage booking: spool %s already lost ~%s g since the last sync - "
-                        "job %s not booked twice",
-                        spool["id"], round(grams), task.get("id"),
-                    )
-                    continue
-                new_net = max(0, int(round(float(spool.get("netWeight") or 0) - grams)))
-                try:
-                    await self.hass.async_add_executor_job(
-                        self.client.update_spool,
-                        {"id": spool["id"], "filamentName": spool.get("filamentName") or "", "netWeight": new_net},
-                    )
-                except (AuthExpired, BambuCloudError) as err:
-                    _LOGGER.warning("Usage booking: cloud rejected update for spool %s: %s", spool["id"], err)
-                    booked = False
-                    continue
-                _LOGGER.info(
-                    "Usage booking: job %s (%s) used %s g of %s %s %s on %s - %s g -> %s g%s",
-                    task.get("id"), task.get("title"), round(grams, 1),
-                    spool.get("filamentVendor"), spool.get("filamentName"), spool.get("displayName") or spool.get("color"),
-                    task.get("deviceName"), spool.get("netWeight"), new_net,
-                    "" if factor == 1.0 else f" (cancelled at {int(factor * 100)} %)",
-                )
-                spool["netWeight"] = new_net
-                if new_net == 0:
-                    spool["depleted"] = True
+                parts = split_usage(position, factor, switches)
+                for pos, share, fallback_id in parts:
+                    key = f"{index}:{pos[0]}:{pos[1]}"
+                    if key in settled:
+                        continue
+                    if await self._async_book_usage(
+                        data, task, item, pos, planned * share, fallback_id,
+                        cancelled_at=None if factor == 1.0 else factor,
+                        split=len(parts) > 1 or pos != position,
+                    ):
+                        settled.add(key)
+                    else:
+                        booked = False
             if booked:
-                await self.usage.async_mark_done(task["id"])
+                await self.usage.async_mark_done(task["id"], switches)
+            else:
+                await self.usage.async_set_settled_parts(task["id"], settled)
+
+    async def _async_book_usage(
+        self,
+        data: dict[int, dict[str, Any]],
+        task: dict[str, Any],
+        item: dict[str, Any],
+        pos: tuple[int, int],
+        grams: float,
+        fallback_id: int | None,
+        *,
+        cancelled_at: float | None,
+        split: bool,
+    ) -> bool:
+        """Book `grams` of a job against the manual spool in one slot.
+
+        Returns False only when the cloud rejected the update (that part
+        is retried with the next sync); everything else is settled, and
+        what could not be booked is logged.
+        """
+        where = f"{task.get('deviceName') or 'printer'} {_pos_label(pos)}"
+        spool = find_mounted_manual_spool(data, task.get("deviceId"), *pos)
+        if spool is None and fallback_id is not None:
+            # Studio unbinds a run-out slot within seconds; the spool noted
+            # at the runout is still the one this part came from.
+            candidate = data.get(fallback_id)
+            if candidate and not candidate.get("RFID") and not candidate.get("inPrinter"):
+                spool = candidate
+        if spool is None:
+            if self._slot_holds_rfid(data, task.get("deviceId"), pos):
+                _LOGGER.debug(
+                    "Usage booking: job %s used an RFID spool in %s - nothing to book",
+                    task.get("id"), where,
+                )
+            else:
+                _LOGGER.warning(
+                    "Usage booking: job %s (%s) used %s g from %s, but the library "
+                    "shows no spool in that slot - not booked",
+                    task.get("id"), task.get("title"), round(grams, 1), where,
+                )
+            return True
+        fid_task, fid_spool = item.get("filamentId") or "", spool.get("filamentId") or ""
+        if fid_task and fid_spool and fid_task != fid_spool:
+            _LOGGER.warning(
+                "Usage booking: job %s used %s in %s but the library has %s "
+                "(%s %s) there - not booked",
+                task.get("id"), fid_task, where,
+                fid_spool, spool.get("filamentVendor"), spool.get("filamentName"),
+            )
+            return True
+        previous = (self.data or {}).get(spool["id"])
+        if self.usage.foreign_change_detected(previous, spool, grams):
+            _LOGGER.info(
+                "Usage booking: spool %s already lost ~%s g since the last sync - "
+                "job %s not booked twice",
+                spool["id"], round(grams), task.get("id"),
+            )
+            return True
+        old_net = int(round(float(spool.get("netWeight") or 0)))
+        new_net = max(0, int(round(float(spool.get("netWeight") or 0) - grams)))
+        if new_net != old_net:
+            try:
+                await self.hass.async_add_executor_job(
+                    self.client.update_spool,
+                    {"id": spool["id"], "filamentName": spool.get("filamentName") or "", "netWeight": new_net},
+                )
+            except (AuthExpired, BambuCloudError) as err:
+                _LOGGER.warning("Usage booking: cloud rejected update for spool %s: %s", spool["id"], err)
+                return False
+        notes = []
+        if cancelled_at is not None:
+            notes.append(f"cancelled at {int(cancelled_at * 100)} %")
+        if split:
+            notes.append("split at the AMS backup switch, estimated from the print progress")
+        _LOGGER.info(
+            "Usage booking: job %s (%s) used %s g of %s %s %s in %s - %s g -> %s g%s",
+            task.get("id"), task.get("title"), round(grams, 1),
+            spool.get("filamentVendor"), spool.get("filamentName"), spool.get("displayName") or spool.get("color"),
+            where, spool.get("netWeight"), new_net,
+            f" ({'; '.join(notes)})" if notes else "",
+        )
+        spool["netWeight"] = new_net
+        if new_net == 0:
+            spool["depleted"] = True
+        return True
+
+    def _slot_holds_rfid(
+        self, data: dict[int, dict[str, Any]], dev_id: Any, pos: tuple[int, int]
+    ) -> bool:
+        """An RFID spool sits in that slot - the AMS tracks its weight itself."""
+        for spool in data.values():
+            if (
+                spool.get("RFID")
+                and spool.get("inPrinter")
+                and spool.get("devId") == dev_id
+                and str(spool.get("amsId")) == str(pos[0])
+                and str(spool.get("slotId")) == str(pos[1])
+            ):
+                return True
+        if not bambulab_available(self.hass):
+            return False
+        return any(
+            tray.printer_serial == dev_id and tray.ams_id == pos[0] and str(tray.slot_id) == str(pos[1])
+            for tray in scan_mounted_rfid_trays(self.hass)
+        )
 
     def _cancelled_factor(self, task: dict[str, Any]) -> float | None:
         """Share of a cancelled job that was printed, from the progress snapshot."""
@@ -764,6 +926,14 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         self._presets_cache = sorted(presets.values(), key=lambda p: p["name"].lower())
         self._presets_cached_at = now
         return self._presets_cache
+
+
+def _pos_label(pos: tuple[int, int]) -> str:
+    """'AMS 1 slot 2' / 'AMS HT 1' from a cloud (amsId, slotId) position."""
+    ams, slot = pos
+    if ams >= 128:
+        return f"AMS HT {ams - 127}"
+    return f"AMS {ams + 1} slot {slot + 1}"
 
 
 def _first(value: Any) -> str:
