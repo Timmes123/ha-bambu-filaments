@@ -103,9 +103,9 @@ def sync_spool_devices(
             except ValueError:
                 continue
             if sid not in keep:
-                dev_reg.async_update_device(
-                    device.id, remove_config_entry_id=entry.entry_id
-                )
+                # A device belongs to exactly one config entry (HA 2026.8+);
+                # detaching the entry via async_update_device is deprecated.
+                dev_reg.async_remove_device(device.id)
             elif sid in data:
                 name = spool_display_name(data[sid], coordinator)
                 if device.name != name:
