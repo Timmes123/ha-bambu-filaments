@@ -138,11 +138,16 @@ Everything is configurable in the visual editor.
 | `entity` | auto | The aggregate spools sensor |
 | `title` | "Filament" | Card title ("" hides the header) |
 | `group_by` | `line` | `line` (brand + product), `product` (product across brands), `material`, `none` |
-| `sort` | `name` | `name`, `remaining_asc`, `remaining_desc` |
+| `sort` | `name` | `name`, `remaining_asc`, `remaining_desc`, `color_code` (Bambu color code = palette order; spools without a code follow by name) |
 | `combine` | `false` | Merge identical spools into one ×n row with summed remaining; click to expand |
 | `max_remaining_g` | – | Only entries with at most this many grams left |
 | `max_remaining_pct` | – | Only entries at or below this remaining % |
-| `materials` | – | Materials to include, e.g. `[PLA, PETG]` |
+| `min_remaining_pct` | – | Only entries at or above this remaining %, e.g. `100` for full spools |
+| `materials` | – | Materials to filter by, e.g. `[PLA, PETG]` |
+| `vendors` | – | Brands to filter by, e.g. `[Bambu Lab]` |
+| `products` | – | Product lines to filter by, e.g. `[PLA Galaxy, PLA Sparkle]` |
+| `materials_mode`, `vendors_mode`, `products_mode` | `include` | `include` shows only the listed values, `exclude` everything else (e.g. all brands except Bambu Lab, or no support filaments) |
+| `spool_type` | – | `rfid` or `manual` (manual = entered by hand, e.g. sealed stock) |
 | `only_in_printer` | `false` | Only spools loaded in a printer/AMS |
 | `max_items` | – | Cap the number of rows after sorting |
 | `show_empty` | `true` | Include spools with 0 g left (filtered before `combine`) |
@@ -153,7 +158,7 @@ Everything is configurable in the visual editor.
 | `show_edit` | `true` | Cog icon per row (edit, delete) |
 | `show_details` | `true` | Tapping a spool row opens a details dialog with a remaining-weight history chart (stacks still expand; expanded spools open it). With `show_edit` it also offers quick actions: enter the weighed remaining grams, or mark the spool as full |
 | `details_days` | `30` | Days shown in the history chart (daily means from HA's long-term statistics) |
-| `show_add` | `true` | "Add spool" button |
+| `show_add` | `true` | "Add spool" button below the list and a + in the header |
 | `compact` | `false` | Slimmer rows without the meta line |
 | `low_threshold` | `20` | Bar turns red below this % |
 | `warn_threshold` | `50` | Bar turns orange below this % |

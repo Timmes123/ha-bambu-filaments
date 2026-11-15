@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.1.0";
+const CARD_VERSION = "2.2.0";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -80,11 +80,19 @@ const STR = {
     e_title: "Title",
     e_group: "Group by", g_line: "Filament line (brand + product)", g_product: "Product line (all brands)", g_material: "Material", g_none: "No grouping",
     e_sort: "Sort by", s_name: "Name", s_rem_asc: "Remaining (low first)", s_rem_desc: "Remaining (high first)",
+    s_code: "Bambu color code (palette order)",
     e_combine: "Combine identical spools (sum remaining)",
     e_filters: "Filters",
     e_max_g: "Only show below (g, empty = off)",
     e_max_pct: "Only show below (%, empty = off)",
-    e_materials: "Materials (none checked = all)",
+    e_min_pct: "Only show from (%, empty = off)",
+    e_materials: "Materials",
+    e_vendors: "Brands",
+    e_products: "Product lines",
+    m_include: "Only checked (none = all)",
+    m_exclude: "All except checked",
+    e_type: "Spool type",
+    ty_all: "All", ty_rfid: "RFID only", ty_manual: "Manual only (e.g. sealed stock)",
     e_only_printer: "Only spools loaded in a printer/AMS",
     e_max_items: "Max. rows (empty = all)",
     e_show_empty: "Show empty spools",
@@ -162,11 +170,19 @@ const STR = {
     e_title: "Titel",
     e_group: "Gruppieren nach", g_line: "Filamentlinie (Hersteller + Sorte)", g_product: "Sorte (alle Hersteller)", g_material: "Material", g_none: "Keine Gruppierung",
     e_sort: "Sortieren nach", s_name: "Name", s_rem_asc: "Restmenge (wenig zuerst)", s_rem_desc: "Restmenge (viel zuerst)",
+    s_code: "Bambu-Farbcode (Farbpalette)",
     e_combine: "Gleiche Filamente zusammenfassen (Rest addieren)",
     e_filters: "Filter",
     e_max_g: "Nur anzeigen unter (g, leer = aus)",
     e_max_pct: "Nur anzeigen unter (%, leer = aus)",
-    e_materials: "Materialien (nichts angehakt = alle)",
+    e_min_pct: "Nur anzeigen ab (%, leer = aus)",
+    e_materials: "Materialien",
+    e_vendors: "Hersteller",
+    e_products: "Sorten",
+    m_include: "Nur angehakte (nichts = alle)",
+    m_exclude: "Alle außer angehakte",
+    e_type: "Spulentyp",
+    ty_all: "Alle", ty_rfid: "Nur RFID", ty_manual: "Nur manuelle (z. B. Lagerware)",
     e_only_printer: "Nur eingelegte Spulen (Drucker/AMS)",
     e_max_items: "Max. Zeilen (leer = alle)",
     e_show_empty: "Leere Spulen anzeigen",
@@ -248,6 +264,23 @@ function normHex(v) {
   v = String(v).trim().toUpperCase();
   if (!HEX_RE.test(v)) return "";
   return v.startsWith("#") ? v : `#${v}`;
+}
+
+// The three list filters of the card (config key -> spool value). Each has a
+// "<key>_mode": "include" (default, only listed values) or "exclude" (all but
+// the listed values); an empty list never filters.
+const LIST_FILTERS = {
+  materials: (s) => s.material || "",
+  vendors: (s) => s.vendor || "",
+  products: (s) => s.name || s.material || "",
+};
+
+function listFilter(config, key) {
+  const list = config[key];
+  if (!Array.isArray(list) || !list.length) return null;
+  const exclude = config[`${key}_mode`] === "exclude";
+  const get = LIST_FILTERS[key];
+  return (s) => list.includes(get(s)) !== exclude;
 }
 
 function fmtG(g) {
@@ -402,10 +435,18 @@ class BambuFilamentsCard extends HTMLElement {
     // Empty spools are dropped before combining so a stack shrinks to its
     // non-empty members (×5 instead of ×7) — matching what the Bambu apps show.
     if (!c.show_empty) spools = spools.filter((s) => (s.remaining_g ?? 0) > 0);
+    // Per-spool filters also run before combining: a stack mixing RFID and
+    // manual spools shrinks to the members the card asks for.
+    for (const key of Object.keys(LIST_FILTERS)) {
+      const keep = listFilter(c, key);
+      if (keep) spools = spools.filter(keep);
+    }
+    if (c.spool_type === "rfid") spools = spools.filter((s) => s.create_type === "ams");
+    else if (c.spool_type === "manual") spools = spools.filter((s) => s.create_type === "manual");
     if (c.combine) spools = this._combine(spools);
     if (c.only_in_printer) spools = spools.filter((s) => s.in_printer);
-    if (Array.isArray(c.materials) && c.materials.length) {
-      spools = spools.filter((s) => c.materials.includes(s.material));
+    if (c.min_remaining_pct != null) {
+      spools = spools.filter((s) => (s.total_g ? (s.remaining_g ?? 0) / s.total_g * 100 : 0) >= Number(c.min_remaining_pct));
     }
     if (c.max_remaining_g != null) spools = spools.filter((s) => (s.remaining_g ?? 0) <= Number(c.max_remaining_g));
     if (c.max_remaining_pct != null) {
@@ -415,6 +456,18 @@ class BambuFilamentsCard extends HTMLElement {
     const rem = (s) => (s.total_g ? (s.remaining_g ?? 0) / s.total_g : 0);
     if (c.sort === "remaining_asc") spools.sort((a, b) => rem(a) - rem(b) || name(a).localeCompare(name(b)));
     else if (c.sort === "remaining_desc") spools.sort((a, b) => rem(b) - rem(a) || name(a).localeCompare(name(b)));
+    else if (c.sort === "color_code") {
+      // Bambu's 5-digit codes run along the color palette within a product
+      // line; spools without one (third-party brands) follow, by name.
+      const code = (s) => {
+        const n = Number(s.bambu_color_code);
+        return s.bambu_color_code && Number.isFinite(n) ? n : Infinity;
+      };
+      spools.sort((a, b) => {
+        const ca = code(a), cb = code(b);
+        return (ca === cb ? 0 : ca < cb ? -1 : 1) || name(a).localeCompare(name(b));
+      });
+    }
     else spools.sort((a, b) => name(a).localeCompare(name(b)));
     if (c.max_items) spools = spools.slice(0, Number(c.max_items));
     return spools;
@@ -500,14 +553,17 @@ class BambuFilamentsCard extends HTMLElement {
         ${title ? `<div class="head">
           <div class="title">${esc(title)}</div>
           <div class="sum">${t.spools(spools.length)} · ${fmtG(totalG)}</div>
+          ${c.show_add ? `<ha-icon class="headadd" icon="mdi:plus" title="${esc(t.add_btn)}" role="button" tabindex="0"></ha-icon>` : ""}
         </div>` : ""}
         <div class="list" ${scroll}>${body}</div>
         ${c.show_add ? `<div class="addrow"><ha-icon icon="mdi:plus"></ha-icon><span>${t.add_btn}</span></div>` : ""}
       </ha-card>${this._css()}`;
 
-    this.shadowRoot.querySelector(".addrow")?.addEventListener("click", () => {
-      this._openDialog(t, null);
-    });
+    // Add button twice: below the list and (with a title) in the header, so
+    // a long list does not have to be scrolled to its end.
+    this.shadowRoot.querySelectorAll(".addrow, .headadd").forEach((el) =>
+      el.addEventListener("click", () => this._openDialog(t, null))
+    );
     this.shadowRoot.querySelector(".stale-btn")?.addEventListener("click", () => reloadCard());
 
     this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
@@ -1332,8 +1388,12 @@ class BambuFilamentsCard extends HTMLElement {
   _css() {
     return `<style>
       ha-card { padding: 12px 16px 8px; }
-      .head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
-      .title { font-size:1.15em; font-weight:600; }
+      .head { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+      .title { font-size:1.15em; font-weight:600; margin-right:auto; }
+      .headadd { --mdc-icon-size:20px; align-self:center; flex:none; cursor:pointer; padding:3px;
+                 border-radius:50%; color:var(--secondary-text-color);
+                 border:1px solid var(--divider-color); }
+      .headadd:hover { color:var(--primary-text-color); border-color:var(--secondary-text-color); }
       .sum { color: var(--secondary-text-color); font-size:0.9em; }
       .msg { padding:16px 4px; color: var(--secondary-text-color); }
       .stale { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
@@ -1423,11 +1483,26 @@ class BambuFilamentsCardEditor extends HTMLElement {
       <label class="chk"><input type="checkbox" data-f="${f}" ${c[f] ? "checked" : ""}/> ${label}</label>`;
     const stEntity = c.entity || (this._hass ? findSpoolsEntity(this._hass) : null);
     const st = stEntity ? this._hass?.states?.[stEntity] : null;
-    const materials = [...new Set(((st?.attributes?.spools) || [])
-      .map((s) => s.material).filter(Boolean))].sort();
-    const selectedMats = c.materials || [];
-    const matBoxes = materials.map((m) => `
-      <label class="chk"><input type="checkbox" data-mat="${esc(m)}" ${selectedMats.includes(m) ? "checked" : ""}/> ${esc(m)}</label>`).join("");
+    // One checkbox list per list filter, fed by the live inventory. Values
+    // already selected stay listed even when no spool carries them any more,
+    // so they can still be unchecked.
+    const listSection = (key, label) => {
+      const selected = Array.isArray(c[key]) ? c[key] : [];
+      const values = [...new Set([
+        ...((st?.attributes?.spools) || []).map(LIST_FILTERS[key]),
+        ...selected,
+      ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      if (!values.length) return "";
+      const exclude = c[`${key}_mode`] === "exclude";
+      return `
+        <div class="lhead"><span>${label}</span>
+          <select data-mode="${key}">
+            <option value="include" ${exclude ? "" : "selected"}>${t.m_include}</option>
+            <option value="exclude" ${exclude ? "selected" : ""}>${t.m_exclude}</option>
+          </select></div>
+        <div class="mats">${values.map((v) => `
+          <label class="chk"><input type="checkbox" data-list="${key}" data-val="${esc(v)}" ${selected.includes(v) ? "checked" : ""}/> ${esc(v)}</label>`).join("")}</div>`;
+    };
     this.shadowRoot.innerHTML = `
       <style>
         .form { display:flex; flex-direction:column; gap:10px; padding:4px 0; }
@@ -1438,10 +1513,13 @@ class BambuFilamentsCardEditor extends HTMLElement {
         input[type=text], input[type=number], select {
           padding:6px 8px; border:1px solid var(--divider-color); border-radius:6px;
           background: var(--card-background-color); color: var(--primary-text-color); }
-        .cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+        .cols select, .cols input { box-sizing:border-box; width:100%; min-width:0; }
         .sect { font-weight:600; margin-top:6px; border-bottom:1px solid var(--divider-color);
                 padding-bottom:2px; color: var(--primary-text-color); }
         .mats { display:flex; flex-wrap:wrap; gap:4px 14px; }
+        .lhead { display:flex; align-items:center; justify-content:space-between; gap:10px;
+                 margin-top:4px; font-size:0.9em; color: var(--secondary-text-color); }
       </style>
       <div class="form">
         <label>${t.e_entity}<input type="text" data-f="entity" value="${esc(c.entity || "")}"/></label>
@@ -1459,6 +1537,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
               <option value="name" ${c.sort === "name" ? "selected" : ""}>${t.s_name}</option>
               <option value="remaining_asc" ${c.sort === "remaining_asc" ? "selected" : ""}>${t.s_rem_asc}</option>
               <option value="remaining_desc" ${c.sort === "remaining_desc" ? "selected" : ""}>${t.s_rem_desc}</option>
+              <option value="color_code" ${c.sort === "color_code" ? "selected" : ""}>${t.s_code}</option>
             </select></label>
         </div>
         ${check("combine", t.e_combine)}
@@ -1468,10 +1547,19 @@ class BambuFilamentsCardEditor extends HTMLElement {
           <label>${t.e_max_pct}<input type="number" min="0" max="100" data-f="max_remaining_pct" value="${c.max_remaining_pct ?? ""}"/></label>
         </div>
         <div class="cols">
+          <label>${t.e_min_pct}<input type="number" min="0" max="100" data-f="min_remaining_pct" value="${c.min_remaining_pct ?? ""}"/></label>
           <label>${t.e_max_items}<input type="number" min="1" data-f="max_items" value="${c.max_items ?? ""}"/></label>
         </div>
+        <label>${t.e_type}
+          <select data-f="spool_type">
+            <option value="" ${!c.spool_type ? "selected" : ""}>${t.ty_all}</option>
+            <option value="rfid" ${c.spool_type === "rfid" ? "selected" : ""}>${t.ty_rfid}</option>
+            <option value="manual" ${c.spool_type === "manual" ? "selected" : ""}>${t.ty_manual}</option>
+          </select></label>
         ${check("only_in_printer", t.e_only_printer)}
-        ${materials.length ? `<label>${t.e_materials}</label><div class="mats">${matBoxes}</div>` : ""}
+        ${listSection("vendors", t.e_vendors)}
+        ${listSection("materials", t.e_materials)}
+        ${listSection("products", t.e_products)}
         <div class="sect"></div>
         ${check("show_empty", t.e_show_empty)}
         ${check("show_location", t.e_show_location)}
@@ -1488,12 +1576,21 @@ class BambuFilamentsCardEditor extends HTMLElement {
         </div>
         <label>${t.e_max_height}<input type="number" min="100" data-f="max_height" value="${c.max_height || ""}"/></label>
       </div>`;
-    this.shadowRoot.querySelectorAll("[data-mat]").forEach((el) =>
+    this.shadowRoot.querySelectorAll("[data-list]").forEach((el) =>
       el.addEventListener("change", () => {
-        const checked = [...this.shadowRoot.querySelectorAll("[data-mat]")]
-          .filter((x) => x.checked).map((x) => x.dataset.mat);
-        if (checked.length) this._config.materials = checked;
-        else delete this._config.materials;
+        const key = el.dataset.list;
+        const checked = [...this.shadowRoot.querySelectorAll(`[data-list="${key}"]`)]
+          .filter((x) => x.checked).map((x) => x.dataset.val);
+        if (checked.length) this._config[key] = checked;
+        else delete this._config[key];
+        this._fire();
+      })
+    );
+    this.shadowRoot.querySelectorAll("[data-mode]").forEach((el) =>
+      el.addEventListener("change", () => {
+        const key = `${el.dataset.mode}_mode`;
+        if (el.value === "exclude") this._config[key] = "exclude";
+        else delete this._config[key];
         this._fire();
       })
     );
