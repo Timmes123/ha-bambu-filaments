@@ -35,7 +35,7 @@ Unofficial, reverse-engineered cloud API — not affiliated with Bambu Lab, may 
 
 **Book third-party usage.** Nobody deducts consumption for non-RFID spools — not Studio, not the app, not the cloud. Enabled, every finished print job is booked once against the manual spool the library shows in that slot, using the per-slot grams the cloud records (multi-color prints included, wherever the print was started). Jobs are remembered so nothing is booked twice; RFID spools are untouched. If the AMS switches to a backup spool mid-print, the job is split between both spools by the print progress at the switch (an estimate, needs ha-bambulab); a job that cannot be booked shows up as a warning in the log. With the runout rule on, a manual spool whose slot runs empty while a print draws from it is set to 0 g.
 
-**No duplicate stock.** Register sealed spools in one step (count field in the card, `count` in `create_spool`). When the real spool is first loaded, Bambu creates a new RFID entry and your manual one would stay behind — the integration removes exactly one matching full manual spool automatically.
+**No duplicate stock.** Register sealed spools in one step, without opening the box: type the 5-digit color code printed on the Bambu Lab packaging (e.g. `13504`) and product, slicer profile and official color are filled in for you (code field in the card, `color_code` in `create_spool`; count field for several spools). When the real spool is first loaded, Bambu creates a new RFID entry and your manual one would stay behind — the integration removes exactly one matching full manual spool automatically.
 
 All of it is off by default and toggled on the **Features** step after login or later via *Configure*. The AMS features are greyed out until the [Bambu Lab printer integration](https://github.com/greghesp/ha-bambulab) is installed; usage booking and stock dedup work from the cloud alone.
 
@@ -80,7 +80,7 @@ Shown on the **Features** step during setup and behind *Configure*: polling inte
 | `bambu_filaments.set_note` | `spool_id`, `note` | Set the note |
 | `bambu_filaments.set_filament_id` | `spool_id`, `filament_id` | Link a Bambu slicer profile (`GFA00` = PLA Basic, `GFL99` = Generic PLA); `""` unlinks |
 | `bambu_filaments.update_spool` | `spool_id` + any of `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `note`, `filament_id`, `display_name` | Change fields; only given fields are written |
-| `bambu_filaments.create_spool` | `vendor`, `material`, `name`, `color`, `total_g`, `remaining_g`, `filament_id`, `display_name`, `note`, `count` | Add spool(s); `filament_id: ""` for third-party brands, `count` 1–50 |
+| `bambu_filaments.create_spool` | `color_code` **or** `vendor`, `material`, `name`, `color`; plus `total_g`, `remaining_g`, `filament_id`, `display_name`, `note`, `count` | Add spool(s); `color_code` = 5-digit code on the Bambu box (fills everything else), `filament_id: ""` for third-party brands, `count` 1–50 |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete from the cloud library |
 | `bambu_filaments.get_catalog` | – | Vendor/product combinations the cloud accepts, plus your own slicer presets as `presets` (response data) |
 
@@ -121,7 +121,7 @@ compact: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
 
-**Add and edit dialogs** — catalog dropdowns, color picker, count field for stock, custom/third-party brands with a linked slicer profile (official or one of your own Studio presets) so Studio can assign them, and a cog per row to edit or delete:
+**Add and edit dialogs** — Bambu color code from the box, catalog dropdowns, color picker, count field for stock, custom/third-party brands with a linked slicer profile (official or one of your own Studio presets) so Studio can assign them, and a cog per row to edit or delete:
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="300" alt="In-card dialog for adding a new spool"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-custom.png" width="300" alt="Custom third-party brand mode of the add dialog"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-edit-dialog.png" width="300" alt="In-card dialog for editing an existing spool">
 

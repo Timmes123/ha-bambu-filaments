@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.0.2";
+const CARD_VERSION = "2.1.0";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -66,6 +66,8 @@ const STR = {
     d_total: "Spool size (g)",
     d_remaining: "Remaining (g)",
     d_count: "Count",
+    d_code: "Bambu color code (on the box, e.g. 13504)",
+    d_code_unknown: "Unknown code - pick the filament below.",
     d_dup_title: "Add more spools of this type",
     d_dup_hint: "Creates full manual spools (stock) with the same brand, product, color and size - name and note are not copied.",
     d_dup_btn: (n) => `Create ${n} spool${n === 1 ? "" : "s"}`,
@@ -147,6 +149,8 @@ const STR = {
     d_total: "Spulengröße (g)",
     d_remaining: "Restgewicht (g)",
     d_count: "Anzahl",
+    d_code: "Bambu-Farbcode (auf der Packung, z. B. 13504)",
+    d_code_unknown: "Unbekannter Code - Filament unten auswählen.",
     d_dup_title: "Weitere Spulen dieses Typs anlegen",
     d_dup_hint: "Legt volle manuelle Spulen (Vorrat) mit gleicher Marke, Sorte, Farbe und Größe an - Name und Notiz werden nicht übernommen.",
     d_dup_btn: (n) => `${n} Spule${n === 1 ? "" : "n"} anlegen`,
@@ -836,12 +840,16 @@ class BambuFilamentsCard extends HTMLElement {
     // The account's own slicer presets (filament_id "P…"): selectable as a
     // spool's slicer profile only, never as an official vendor/product.
     let presets = [];
+    // Official color codes (5 digits on the box): typing one fills product
+    // and color, so sealed spools can be registered without the AMS.
+    let codes = [];
     try {
       const resp = await this._hass.callService(
         "bambu_filaments", "get_catalog", {}, undefined, false, true
       );
       catalog = resp?.response?.filaments || [];
       presets = resp?.response?.presets || [];
+      codes = resp?.response?.colors || [];
     } catch (e) {
       catalog = [];
     }
@@ -920,6 +928,11 @@ class BambuFilamentsCard extends HTMLElement {
           background:var(--secondary-background-color, #2b313c); }
         .cols2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
         .derr { color:var(--error-color, #e74c3c); font-size:0.85em; }
+        .codehint { font-size:0.85em; color:var(--primary-text-color, #e3e5ea);
+                    display:flex; align-items:center; gap:6px; min-height:1.2em; }
+        .codehint.bad { color:var(--error-color, #e74c3c); }
+        .codehint i { width:14px; height:14px; border-radius:50%; flex:none;
+                      border:1px solid var(--divider-color, rgba(255,255,255,.3)); }
         .dbtns { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
         .dbtns button { padding:8px 14px; border-radius:8px; border:none; cursor:pointer;
           font-size:0.95em; }
@@ -941,6 +954,10 @@ class BambuFilamentsCard extends HTMLElement {
       <div class="overlay">
         <div class="dlg">
           <div class="dtitle">${isEdit ? t.d_edit_title : t.d_title}</div>
+          ${!isEdit && catalog.length && codes.length ? `
+          <label>${t.d_code}
+            <input id="f-code" type="text" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="13504"/>
+            <span class="codehint" hidden></span></label>` : ""}
           ${catalog.length ? `
           <label>${t.d_vendor}
             <select id="f-vendor">
@@ -1054,6 +1071,55 @@ class BambuFilamentsCard extends HTMLElement {
         }
       });
     }
+    // Color code -> official product + color. `codeEntry` stays set only while
+    // product and color still are what the code filled in; any manual change
+    // turns the dialog back into a plain manual create.
+    let codeEntry = null;
+    let codeFilling = false;
+    const codeInput = root.querySelector("#f-code");
+    if (codeInput) {
+      const hint = root.querySelector(".codehint");
+      const dropCode = () => {
+        if (!codeEntry) return;
+        codeEntry = null;
+        codeInput.value = "";
+        hint.hidden = true;
+      };
+      codeInput.addEventListener("input", () => {
+        const code = codeInput.value.replace(/\D/g, "");
+        if (code !== codeInput.value) codeInput.value = code;
+        codeEntry = null;
+        hint.hidden = code.length < 5;
+        if (code.length < 5) return;
+        const hit = codes.find((c) => c.code === code);
+        const cat = hit && (
+          catalog.find((f) => f.filament_id === hit.filament_id && f.vendor === "Bambu Lab")
+          || catalog.find((f) => f.filament_id === hit.filament_id));
+        const hex = hit ? normHex((hit.colors || [])[0]).slice(0, 7) : "";
+        hint.classList.toggle("bad", !hit || !hex);
+        if (!hit || !hex) {
+          hint.textContent = t.d_code_unknown;
+          return;
+        }
+        if (cat) {
+          const vendorSel = root.querySelector("#f-vendor");
+          vendorSel.value = cat.vendor;
+          // Rebuilds the product list; must not count as a manual change.
+          codeFilling = true;
+          vendorSel.dispatchEvent(new Event("change"));
+          codeFilling = false;
+          root.querySelector("#f-product").value = cat.filament_id;
+        }
+        root.querySelector("#f-color").value = hex.toLowerCase();
+        hint.innerHTML = `<i style="background:${hex}"></i>${esc(cat ? cat.name : hit.product)}${hit.color_name ? ` · ${esc(hit.color_name)}` : ""}`;
+        codeEntry = hit;
+      });
+      for (const id of ["f-vendor", "f-product", "f-color"]) {
+        root.querySelector(`#${id}`).addEventListener("change", () => {
+          if (!codeFilling) dropCode();
+        });
+      }
+    }
     if (catalog.length) {
       root.querySelector("#f-vendor").addEventListener("change", (ev) => {
         const isCustom = ev.target.value === "__custom__";
@@ -1087,7 +1153,13 @@ class BambuFilamentsCard extends HTMLElement {
         total_g: total,
         remaining_g: val("f-remaining") === "" ? total : Number(val("f-remaining")),
       };
-      if (catalog.length && val("f-vendor") === "__custom__") {
+      if (codeEntry) {
+        // The backend resolves vendor, product, profile and (multi-)color
+        // from the official database.
+        delete data.vendor;
+        delete data.color;
+        data.color_code = codeEntry.code;
+      } else if (catalog.length && val("f-vendor") === "__custom__") {
         // Custom/third-party brand: free-text vendor/material/name. The
         // filamentId is the chosen slicer profile - or "" for "no profile",
         // the verified way Studio models non-official spools.

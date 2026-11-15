@@ -42,7 +42,9 @@ with sync_playwright() as pw:
     # open the in-card add dialog and shoot the dialog box itself
     page.locator("#shot-overview .addrow").click()
     page.wait_for_timeout(200)
-    page.locator("#f-color").fill("#4e00ad")  # purple-blue, like a real spool
+    # the color code from the box fills product and color on its own
+    page.locator("#f-code").fill("13504")
+    page.wait_for_timeout(100)
     page.locator(".dlg").screenshot(path=str(OUT / "card-add-dialog.png"))
     print("saved card-add-dialog.png")
     # switch to custom/third-party mode, fill it like a real Flashforge spool

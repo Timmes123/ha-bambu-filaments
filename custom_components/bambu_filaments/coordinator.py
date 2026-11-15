@@ -137,13 +137,16 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             function=self.async_request_refresh,
         )
 
+    @property
+    def color_language(self) -> str:
+        """Language of the official color names (option, else HA language)."""
+        lang = (self.config_entry.options or {}).get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG)
+        return self.hass.config.language if lang == "auto" else lang
+
     def color_lookup(self, spool: dict[str, Any]) -> tuple[str | None, str | None]:
         """Localized official color name + Bambu color code for a spool."""
         colors = [c for c in (spool.get("colors") or [spool.get("color")]) if c]
-        lang = (self.config_entry.options or {}).get(OPT_COLOR_LANG, DEFAULT_COLOR_LANG)
-        if lang == "auto":
-            lang = self.hass.config.language
-        return self.colordb.lookup(spool.get("filamentId"), colors, lang)
+        return self.colordb.lookup(spool.get("filamentId"), colors, self.color_language)
 
     async def _async_update_data(self) -> dict[int, dict[str, Any]]:
         try:

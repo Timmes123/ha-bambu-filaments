@@ -195,6 +195,10 @@
           "name": "Vendor",
           "description": "Filament vendor/brand."
         },
+        "color_code": {
+          "name": "Bambu color code",
+          "description": "5-digit code on the Bambu Lab box, e.g. 13504. Fills product, slicer profile and color automatically - material, name and color are then not needed."
+        },
         "material": {
           "name": "Material",
           "description": "Material type, e.g. PLA or PETG."

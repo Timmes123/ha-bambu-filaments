@@ -114,11 +114,16 @@
           { vendor: "Bambu Lab", material: "PETG", name: "PETG Basic", filament_id: "GFG00" },
           { vendor: "Bambu Lab", material: "PETG", name: "PETG HF", filament_id: "GFG02" },
           { vendor: "Bambu Lab", material: "PLA", name: "PLA Silk+", filament_id: "GFA05" },
+          { vendor: "Bambu Lab", material: "PLA", name: "PLA Galaxy", filament_id: "GFA15" },
           { vendor: "Generic", material: "PLA", name: "PLA", filament_id: "GFL99" },
           { vendor: "Generic", material: "PETG", name: "PETG", filament_id: "GFG99" },
           { vendor: "SUNLU", material: "PLA", name: "PLA+ 2.0", filament_id: "GFL55" },
+        ], colors: [
+          { code: "10300", filament_id: "GFA00", product: "PLA Basic", colors: ["#FF6A13"], color_name: "Orange" },
+          { code: "13504", filament_id: "GFA15", product: "PLA Galaxy", colors: ["#424379"], color_name: "Nebulae" },
         ] } });
       }
+      (window.__calls = window.__calls || []).push({ service, data });
       return Promise.resolve({});
     },
   };

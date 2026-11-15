@@ -56,9 +56,14 @@ SET_FILAMENT_ID_SCHEMA = vol.Schema(
 CREATE_SPOOL_SCHEMA = vol.Schema(
     {
         vol.Optional("vendor", default="Bambu Lab"): cv.string,
-        vol.Required("material"): cv.string,
-        vol.Required("name"): cv.string,
-        vol.Required("color"): COLOR_SCHEMA,
+        # material/name/color are required unless color_code names an official
+        # Bambu filament (checked in the handler).
+        vol.Optional("material"): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional("color"): COLOR_SCHEMA,
+        # 5-digit code on the Bambu box ("13504"): fills vendor, product,
+        # slicer profile and color from the official color database.
+        vol.Optional("color_code"): vol.All(cv.string, vol.Match(r"^\s*\d{5}\s*$")),
         vol.Optional("total_g", default=1000): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=20000)
         ),
@@ -193,21 +198,59 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def handle_create_spool(call: ServiceCall) -> None:
         coordinator = _first_coordinator(hass)
         total = call.data["total_g"]
+        data = dict(call.data)
+        extra_colors: list[str] = []
+        if code := (data.get("color_code") or "").strip():
+            official = coordinator.colordb.by_code(code, coordinator.color_language)
+            if official is None:
+                raise HomeAssistantError(
+                    f"Unknown Bambu color code {code} (not in the official color database)"
+                )
+            try:
+                catalog = await coordinator.async_get_catalog()
+            except BambuCloudError:
+                catalog = []
+            entry = next(
+                (
+                    c
+                    for c in catalog
+                    if c.get("filament_id") == official["filament_id"]
+                    and c.get("vendor") == "Bambu Lab"
+                ),
+                None,
+            ) or next(
+                (c for c in catalog if c.get("filament_id") == official["filament_id"]),
+                None,
+            )
+            # Not in the create catalog (new product line): the cloud stores
+            # free text, so fall back to the database's product name.
+            product = official["product"]
+            data["vendor"] = (entry or {}).get("vendor") or "Bambu Lab"
+            data["name"] = (entry or {}).get("name") or product
+            data["material"] = (entry or {}).get("material") or product.split(" ")[0]
+            data["filament_id"] = official["filament_id"]
+            data["color"] = official["colors"][0]
+            if len(official["colors"]) > 1:
+                extra_colors = official["colors"]
+        elif not all(data.get(key) for key in ("material", "name", "color")):
+            raise HomeAssistantError(
+                "create_spool needs material, name and color - or a Bambu color_code"
+            )
         # The create endpoint expects #RRGGBB without alpha (Studio MITM shape);
         # manual entries omit RFID/trayIdName/rolls, and there is no `colors`,
         # `note` or `status` field in the create body.
         payload: dict[str, Any] = {
             "createType": "manual",
-            "filamentVendor": call.data["vendor"],
-            "filamentType": call.data["material"],
-            "filamentName": call.data["name"],
-            "color": normalize_hex(call.data["color"])[:7],
+            "filamentVendor": data["vendor"],
+            "filamentType": data["material"],
+            "filamentName": data["name"],
+            "color": normalize_hex(data["color"])[:7],
             "colorType": 2,
             "isSupport": False,
-            "netWeight": call.data.get("remaining_g", total),
+            "netWeight": data.get("remaining_g", total),
             "totalNetWeight": total,
         }
-        filament_id = call.data.get("filament_id")
+        filament_id = data.get("filament_id")
         if filament_id is None:
             # Best effort for official filaments: resolve the canonical id from
             # the catalog - exact name match first, then vendor + material.
@@ -260,10 +303,12 @@ def async_register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError(
                 f"{err} (created {created_n} of {count} spools before the error)"
             ) from err
-        if note := call.data.get("note"):
-            # The create endpoint 400s on a note field, so the note is written
-            # with a follow-up PUT onto the just-created spool(s): re-fetch
-            # and take the newest matching ids we did not know before.
+        note = call.data.get("note")
+        if note or extra_colors:
+            # The create endpoint 400s on a note or colors field, so the note
+            # (and the full color list of a multi-color spool) is written with
+            # a follow-up PUT onto the just-created spool(s): re-fetch and
+            # take the newest matching ids we did not know before.
             try:
                 spools = await hass.async_add_executor_job(coordinator.client.get_spools)
                 created = sorted(
@@ -280,19 +325,24 @@ def async_register_services(hass: HomeAssistant) -> None:
                 )[:created_n]
                 if not created:
                     _LOGGER.warning(
-                        "Spool was created but not found on re-fetch; note not set"
+                        "Spool was created but not found on re-fetch; note/colors not set"
                     )
                 for target in created:
+                    update: dict[str, Any] = {
+                        "id": target["id"],
+                        "filamentName": target.get("filamentName") or "",
+                    }
+                    if note:
+                        update["note"] = note
+                    if extra_colors:
+                        update["colors"] = extra_colors
                     await hass.async_add_executor_job(
-                        coordinator.client.update_spool,
-                        {
-                            "id": target["id"],
-                            "filamentName": target.get("filamentName") or "",
-                            "note": note,
-                        },
+                        coordinator.client.update_spool, update
                     )
             except BambuCloudError as err:
-                _LOGGER.warning("Spool was created but setting its note failed: %s", err)
+                _LOGGER.warning(
+                    "Spool was created but setting its note/colors failed: %s", err
+                )
         await coordinator.async_request_refresh()
 
     async def handle_update_spool(call: ServiceCall) -> None:
@@ -340,7 +390,10 @@ def async_register_services(hass: HomeAssistant) -> None:
             presets = await coordinator.async_get_user_presets()
         except BambuCloudError:
             presets = []
-        return {"filaments": filaments, "presets": presets}
+        # Official color codes (5 digits, printed on the box) so the card can
+        # fill product and color from the code alone.
+        colors = coordinator.colordb.codes(coordinator.color_language)
+        return {"filaments": filaments, "presets": presets, "colors": colors}
 
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, handle_refresh)
     hass.services.async_register(

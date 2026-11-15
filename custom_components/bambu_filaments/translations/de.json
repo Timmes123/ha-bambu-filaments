@@ -195,6 +195,10 @@
           "name": "Hersteller",
           "description": "Filament-Hersteller/Marke."
         },
+        "color_code": {
+          "name": "Bambu-Farbcode",
+          "description": "5-stelliger Code auf der Bambu-Lab-Verpackung, z. B. 13504. Füllt Produkt, Slicer-Profil und Farbe automatisch aus - Material, Name und Farbe sind dann nicht nötig."
+        },
         "material": {
           "name": "Material",
           "description": "Materialtyp, z. B. PLA oder PETG."

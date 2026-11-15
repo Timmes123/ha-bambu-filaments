@@ -62,18 +62,23 @@ create_spool:
       example: "Bambu Lab"
       selector:
         text:
+    color_code:
+      required: false
+      example: "13504"
+      selector:
+        text:
     material:
-      required: true
+      required: false
       example: "PLA"
       selector:
         text:
     name:
-      required: true
+      required: false
       example: "PLA Matte"
       selector:
         text:
     color:
-      required: true
+      required: false
       example: "#FF6A13"
       selector:
         text:

@@ -62,6 +62,7 @@ class BambuColorDB:
         self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._by_id_color: dict[tuple[str, tuple[str, ...]], dict] = {}
         self._by_color: dict[tuple[str, ...], dict] = {}
+        self._by_code: dict[str, dict] = {}
 
     async def async_load(self) -> None:
         """Load from cache, refreshing from the public source when stale.
@@ -91,6 +92,7 @@ class BambuColorDB:
             _LOGGER.warning("Color database has an unexpected format: %s", err)
             self._by_id_color = {}
             self._by_color = {}
+            self._by_code = {}
             return False
 
     async def _fetch(self) -> list[dict] | None:
@@ -109,6 +111,7 @@ class BambuColorDB:
     def _build_index(self, entries: list[dict]) -> None:
         by_id_color: dict[tuple[str, tuple[str, ...]], dict] = {}
         by_color: dict[tuple[str, ...], dict] = {}
+        by_code: dict[str, dict] = {}
         for entry in entries:
             colors = entry.get("fila_color") or []
             if not colors:
@@ -123,8 +126,50 @@ class BambuColorDB:
             if fila_id := entry.get("fila_id"):
                 by_id_color[(fila_id, key)] = record
             by_color.setdefault(key, record)
+            # The 5-digit code printed on the box ("13504") identifies product
+            # line + color; only usable when the colors are valid hexes.
+            code = str(entry.get("fila_color_code") or "").strip()
+            hexes = [h for h in (normalize_hex(c) for c in colors) if h]
+            if code and fila_id and len(hexes) == len(colors):
+                by_code.setdefault(
+                    code,
+                    {
+                        "code": code,
+                        "filament_id": fila_id,
+                        "product": entry.get("fila_type") or "",
+                        "colors": [h[:7] for h in hexes],
+                        "names": record["names"],
+                    },
+                )
         self._by_id_color = by_id_color
         self._by_color = by_color
+        self._by_code = by_code
+
+    @staticmethod
+    def _localized(names: dict, language: str) -> str | None:
+        lang = (language or "en").split("-")[0].lower()
+        return names.get(lang) or names.get("en") or next(iter(names.values()), None)
+
+    def by_code(self, code: str | None, language: str = "en") -> dict[str, Any] | None:
+        """Official filament for the color code on the box, or None.
+
+        Returns code, filament_id, product (e.g. "PLA Galaxy"), colors
+        (#RRGGBB, several for multi-color spools) and the localized name.
+        """
+        record = self._by_code.get(str(code or "").strip())
+        if record is None:
+            return None
+        return {
+            "code": record["code"],
+            "filament_id": record["filament_id"],
+            "product": record["product"],
+            "colors": list(record["colors"]),
+            "color_name": self._localized(record["names"], language),
+        }
+
+    def codes(self, language: str = "en") -> list[dict[str, Any]]:
+        """Every known color code, for the card's create dialog."""
+        return [self.by_code(code, language) for code in sorted(self._by_code)]
 
     def tray_code(self, filament_id: str | None, colors: list[str]) -> str | None:
         """Bambu's short tray color code (e.g. "A0") for an exact filament+color match."""
@@ -147,7 +192,4 @@ class BambuColorDB:
             record = self._by_color.get(key)
         if record is None:
             return None, None
-        names = record["names"]
-        lang = (language or "en").split("-")[0].lower()
-        name = names.get(lang) or names.get("en") or next(iter(names.values()), None)
-        return name, record["code"]
+        return self._localized(record["names"], language), record["code"]
