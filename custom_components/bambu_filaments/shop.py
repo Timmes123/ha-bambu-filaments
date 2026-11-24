@@ -85,6 +85,24 @@ def _safe_url(url: str | None) -> str | None:
     return url if _SAFE_URL_RE.match(url) else None
 
 
+def product_line(db_product: str | None, shop_name: str | None) -> str | None:
+    """Product line of a shop color.
+
+    The color database is the default (it names lines the way the spools are
+    named), but it files some sub-lines under their base line: the PLA Basic
+    Gradient colors are "PLA Basic" there, the Silk Multi-Color ones "PLA Silk".
+    The shop sells those on pages of their own, so a shop page name that
+    extends the database name by another word wins. Decorations like
+    "Support for PLA (New Version)" and combined pages like
+    "TPU 85A / TPU 90A" keep the database name.
+    """
+    if db_product and shop_name and shop_name.startswith(db_product + " "):
+        rest = shop_name[len(db_product) + 1 :]
+        if rest[:1].isalnum():
+            return shop_name
+    return db_product or shop_name
+
+
 def filament_handles(sitemap_xml: str) -> list[str]:
     """Product handles from the shop sitemap that look like filament pages."""
     handles: set[str] = set()
@@ -194,8 +212,9 @@ class BambuShopRange:
             entries.append(
                 {
                     "code": code,
-                    "product": (known or {}).get("product")
-                    or products.get(color.get("handle"))
+                    "product": product_line(
+                        (known or {}).get("product"), products.get(color.get("handle"))
+                    )
                     or color.get("handle")
                     or "?",
                     "filament_id": (known or {}).get("filament_id"),
