@@ -252,6 +252,22 @@ class BambuCloudClient:
             raise BambuCloudError(f"AMS sync failed (HTTP {response.status_code})")
         return self._json(response)
 
+    def slot_mappings_sync(self, dev_id: str, mappings: list[dict[str, Any]]) -> dict[str, Any]:
+        """Free AMS slots in the cloud library (Studio's unplug path).
+
+        A mapping {amsSn, slotId, amsId, amsType, spoolId: None} unbinds
+        whatever spool the cloud shows in that slot (verified 2026-11-24;
+        the slot is keyed by amsSn + slotId). Returns per-slot result codes.
+        """
+        response = self._request(
+            "post",
+            f"{self._api}/v1/design-user-service/my/filament/v2/slot-mappings/sync",
+            body={"devId": dev_id, "mappings": mappings},
+        )
+        if response.status_code != 200:
+            raise BambuCloudError(f"Slot mapping sync failed (HTTP {response.status_code})")
+        return self._json(response)
+
     def get_tasks(self, limit: int = 30) -> list[dict[str, Any]]:
         """Recent print jobs of the account (all printers), newest first."""
         response = self._request(

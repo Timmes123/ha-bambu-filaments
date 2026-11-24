@@ -264,6 +264,52 @@ class TraySlot:
         return f"{self.printer_name} {self.ams_model or 'AMS'} slot {int(self.slot_id) + 1}"
 
 
+@dataclass(frozen=True)
+class TraySlotState:
+    """What an AMS slot holds right now, per the printer integration."""
+
+    slot: TraySlot
+    empty: bool
+    tray_uuid: str  # 32-hex uuid of an official spool, "" otherwise
+
+
+def scan_tray_slots(hass: HomeAssistant) -> list[TraySlotState]:
+    """Every AMS slot with a definite state (empty or loaded).
+
+    Slots whose sensor is unavailable/unknown, or that report an unknown
+    spool, are left out - nothing is concluded from them.
+    """
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    slots: list[TraySlotState] = []
+    for entry in ent_reg.entities.values():
+        if entry.platform != BAMBULAB_DOMAIN or entry.domain != "sensor" or entry.disabled:
+            continue
+        match = _AMS_TRAY_RE.match(entry.unique_id or "")
+        if match is None:
+            continue
+        state = hass.states.get(entry.entity_id)
+        if state is None or state.state in ("unavailable", "unknown"):
+            continue
+        attrs = state.attributes
+        if attrs.get("unknown"):
+            continue
+        location = _tray_location(dev_reg, entry, match, attrs)
+        if location is None:
+            continue
+        ams_id, slot_id, printer_name, ams_model = location
+        empty = bool(attrs.get("empty"))
+        uuid = str(attrs.get("tray_uuid") or "").upper()
+        slots.append(
+            TraySlotState(
+                TraySlot(match.group("serial"), printer_name, ams_model, ams_id, slot_id),
+                empty,
+                uuid if not empty and tray_has_rfid(attrs) else "",
+            )
+        )
+    return slots
+
+
 def tray_slot(hass: HomeAssistant, entity_id: str) -> TraySlot | None:
     """Position of an AMS tray sensor as the cloud stores it for a spool.
 

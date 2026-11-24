@@ -25,7 +25,9 @@ from .ams_register import (
     printer_busy,
     printer_progress,
     printer_running,
+    TraySlotState,
     scan_mounted_rfid_trays,
+    scan_tray_slots,
     tray_has_rfid,
     tray_slot,
     watched_entity_ids,
@@ -75,6 +77,26 @@ def _hex6(color: Any) -> str:
     if not isinstance(color, str):
         return ""
     return color.lstrip("#").upper()[:6]
+
+
+def _cloud_slot(spool: dict[str, Any]) -> tuple[Any, int | None, str] | None:
+    """(devId, amsId, slotId) the cloud library shows for a spool, or None."""
+    if not spool.get("inPrinter"):
+        return None
+    try:
+        ams_id = int(spool.get("amsId"))
+    except (TypeError, ValueError):
+        ams_id = None
+    return spool.get("devId"), ams_id, str(spool.get("slotId"))
+
+
+def _cloud_slot_label(spool: dict[str, Any]) -> str:
+    if not spool.get("inPrinter"):
+        return "not loaded"
+    name = spool.get("deviceName") or "?"
+    slot = str(spool.get("slotId"))
+    slot = str(int(slot) + 1) if slot.isdigit() else slot
+    return f"{name} AMS {spool.get('amsId')} slot {slot}"
 
 
 def spool_remaining_pct(spool: dict[str, Any]) -> int:
@@ -215,14 +237,90 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             data = await self._async_register_ams(data, trays)
         if empty_pct or runout:
             await self._async_mark_removed_empty(data, trays, empty_pct, runout)
-        if want_remaining:
-            await self._async_sync_remaining(data, trays)
+        if want_remaining and await self._async_sync_remaining(data, trays):
+            data = await self._async_refetch(data)
         self._last_remain = {t.tray_uuid: (t.remain, t) for t in trays}
         self._track_printing_from(trays)
         manual_runouts, self._manual_runouts = self._manual_runouts, {}
         if runout and manual_runouts:
             await self._async_mark_manual_runout(data, manual_runouts)
+        if want_remaining and await self._async_clear_stale_slots(data):
+            data = await self._async_refetch(data)
         return data
+
+    async def _async_refetch(
+        self, data: dict[int, dict[str, Any]]
+    ) -> dict[int, dict[str, Any]]:
+        """Re-read the library after a write that moved spools around."""
+        try:
+            spools = await self.hass.async_add_executor_job(self.client.get_spools)
+        except (AuthExpired, BambuCloudError) as err:
+            _LOGGER.debug("Re-fetch after AMS sync failed: %s", err)
+            return data
+        return {
+            s["id"]: _sanitize_spool(s) for s in spools if isinstance(s.get("id"), int)
+        }
+
+    async def _async_clear_stale_slots(self, data: dict[int, dict[str, Any]]) -> bool:
+        """Free cloud slots whose spool is no longer in that AMS slot.
+
+        The cloud keeps a spool's slot until Studio or Handy (when open)
+        report it unplugged. When the printer integration says the slot is
+        empty - or, for an RFID spool, holds a different spool - the slot is
+        freed the way Studio does it. The spool, its weight and its library
+        entry stay; only the slot assignment goes. Slots with an unclear
+        state (sensor unavailable, unknown spool) are left alone, and so are
+        manual spools: their slot is set by hand in Studio/Handy and usage
+        booking relies on it.
+        """
+        slots = {
+            (s.slot.printer_serial, s.slot.ams_id, s.slot.slot_id): s
+            for s in scan_tray_slots(self.hass)
+        }
+        if not slots:
+            return False
+        by_printer: dict[str, list[tuple[dict[str, Any], TraySlotState]]] = {}
+        for spool in data.values():
+            rfid = str(spool.get("RFID") or "").upper()
+            if not rfid or not spool.get("inPrinter") or not spool.get("amsSn"):
+                continue
+            key = _cloud_slot(spool)
+            state = slots.get(key) if key else None
+            if state is None:
+                continue
+            if state.empty or state.tray_uuid != rfid:
+                by_printer.setdefault(key[0], []).append((spool, state))
+        cleared = False
+        for dev_id, entries in by_printer.items():
+            mappings = [
+                {
+                    "amsSn": spool["amsSn"],
+                    "slotId": str(spool["slotId"]),
+                    "amsId": int(spool["amsId"]),
+                    "amsType": int(spool.get("amsType") or 0),
+                    "spoolId": None,
+                }
+                for spool, _ in entries
+            ]
+            try:
+                await self.hass.async_add_executor_job(
+                    self.client.slot_mappings_sync, dev_id, mappings
+                )
+            except (AuthExpired, BambuCloudError) as err:
+                _LOGGER.warning(
+                    "Freeing stale AMS slots of %s failed: %s",
+                    entries[0][1].slot.printer_name, err,
+                )
+                continue
+            cleared = True
+            for spool, state in entries:
+                _LOGGER.info(
+                    "Slot sync: %s %s %s is no longer in %s (%s) - slot freed in the "
+                    "cloud library, spool and weight kept",
+                    spool.get("filamentVendor"), spool.get("filamentName"), spool.get("color"),
+                    state.slot.location, "slot empty" if state.empty else "other spool loaded",
+                )
+        return cleared
 
     def _track_printing_from(self, trays: list[MountedTray]) -> None:
         """Remember which mounted spools a running/paused print draws from."""
@@ -394,47 +492,58 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
 
     async def _async_sync_remaining(
         self, data: dict[int, dict[str, Any]], trays: list[MountedTray]
-    ) -> None:
-        """Push the AMS remaining weight of known RFID spools to the cloud.
+    ) -> bool:
+        """Push the AMS remaining weight and slot of known RFID spools to the cloud.
 
         Mirrors Studio's auto push: skip when unchanged, 10 min cooldown per
-        spool while the printer is busy, immediate when idle or at 0 %.
+        spool while the printer is busy, immediate when idle or at 0 %. A
+        spool the cloud shows in another slot (moved, or not loaded at all)
+        is pushed right away, weight changed or not - the cloud then also
+        frees that slot for whatever spool it showed there before. Returns
+        True when a slot changed, so the caller re-reads the library.
         """
         by_rfid = {
             str(s.get("RFID") or "").upper(): s for s in data.values() if s.get("RFID")
         }
         now = self.hass.loop.time()
-        by_printer: dict[str, list[tuple[MountedTray, dict[str, Any], int]]] = {}
+        by_printer: dict[str, list[tuple[MountedTray, dict[str, Any], int, bool]]] = {}
         for tray in trays:
             spool = by_rfid.get(tray.tray_uuid)
-            if spool is None or tray.remain < 0:
+            if spool is None:
                 continue
+            moved = _cloud_slot(spool) != (tray.printer_serial, tray.ams_id, tray.slot_id)
+            stored = int(spool.get("netWeight") or 0)
             total = spool.get("totalNetWeight")
             if not isinstance(total, (int, float)) or total <= 0:
                 total = tray.tray_weight if tray.tray_weight > 0 else 1000
-            net = max(0, min(int(total), round(int(total) * tray.remain / 100)))
-            if net == int(spool.get("netWeight") or 0):
-                continue
-            last = self._last_push.get(tray.tray_uuid)
-            if last is not None and last[0] == net:
-                continue
-            if (
-                net > 0
-                and last is not None
-                and now - last[1] < REMAINING_PUSH_COOLDOWN_S
-                and printer_busy(self.hass, tray.printer_serial)
-            ):
-                continue
-            by_printer.setdefault(tray.printer_serial, []).append((tray, spool, net))
+            if tray.remain < 0:
+                net = stored  # AMS weight unknown: keep the library's
+            else:
+                net = max(0, min(int(total), round(int(total) * tray.remain / 100)))
+            if not moved:
+                if tray.remain < 0 or net == stored:
+                    continue
+                last = self._last_push.get(tray.tray_uuid)
+                if last is not None and last[0] == net:
+                    continue
+                if (
+                    net > 0
+                    and last is not None
+                    and now - last[1] < REMAINING_PUSH_COOLDOWN_S
+                    and printer_busy(self.hass, tray.printer_serial)
+                ):
+                    continue
+            by_printer.setdefault(tray.printer_serial, []).append((tray, spool, net, moved))
         if not by_printer:
-            return
+            return False
+        any_moved = False
         try:
             catalog = await self.async_get_catalog()
         except (AuthExpired, BambuCloudError):
             catalog = []
         for dev_id, entries in by_printer.items():
             items = []
-            for tray, spool, net in entries:
+            for tray, spool, net, _moved in entries:
                 item = build_ams_sync_item(tray, catalog, self.colordb)
                 # Keep the library's identity/total - only the weight comes from the AMS.
                 item.update(
@@ -453,7 +562,16 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             except (AuthExpired, BambuCloudError) as err:
                 _LOGGER.warning("Remaining sync for %s failed: %s", entries[0][0].printer_name, err)
                 continue
-            for tray, spool, net in entries:
+            for tray, spool, net, moved in entries:
+                if moved:
+                    any_moved = True
+                    _LOGGER.info(
+                        "Slot sync: %s %s %s is now in %s (library showed: %s)",
+                        spool.get("filamentVendor"), spool.get("filamentName"),
+                        spool.get("color"), tray.location, _cloud_slot_label(spool),
+                    )
+                if net == int(spool.get("netWeight") or 0):
+                    continue
                 self._last_push[tray.tray_uuid] = (net, now)
                 _LOGGER.info(
                     "Remaining sync: %s %s %s in %s -> %s g (AMS %s %%, was %s g)%s",
@@ -464,6 +582,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
                 spool["netWeight"] = net
                 if net == 0:
                     spool["depleted"] = True
+        return any_moved
 
     async def _async_mark_removed_empty(
         self,
