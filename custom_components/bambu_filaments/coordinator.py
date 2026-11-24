@@ -39,6 +39,11 @@ from .usage import (
     switches_for_task,
 )
 from .colors import BambuColorDB
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .share import ShareLink
+    from .shop import BambuShopRange
 from .const import (
     DEFAULT_AUTO_DEDUP,
     DEFAULT_COLOR_LANG,
@@ -103,6 +108,10 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         # Registry id of the "Bambu Filament Library" hub device (set in
         # async_setup_entry before the platforms load).
         self.hub_device_id: str | None = None
+        # Shared shop-range snapshot (None = option off) and this entry's
+        # share link (None = share page off); both set in async_setup_entry.
+        self.shop: BambuShopRange | None = None
+        self.share: ShareLink | None = None
         self._catalog_cache: list[dict[str, Any]] | None = None
         self._catalog_cached_at: float = 0.0
         self._presets_cache: list[dict[str, Any]] | None = None

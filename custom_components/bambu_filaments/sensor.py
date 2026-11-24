@@ -15,7 +15,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfMass
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfMass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -28,6 +28,7 @@ from .coordinator import BambuFilamentsCoordinator, spool_remaining_pct
 from .entity import (
     async_setup_spool_platform,
     clean_display_name,
+    remove_stale_hub_entity,
     spool_device_info,
 )
 
@@ -98,9 +99,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up aggregate sensors and dynamically managed per-spool devices."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        [SpoolCountSensor(coordinator, entry), TotalRemainingSensor(coordinator, entry)]
-    )
+    entities: list[SensorEntity] = [
+        SpoolCountSensor(coordinator, entry),
+        TotalRemainingSensor(coordinator, entry),
+    ]
+    if coordinator.share is not None:
+        entities.append(ShareLinkSensor(coordinator, entry))
+    else:
+        remove_stale_hub_entity(hass, "sensor", f"{entry.entry_id}-share-link")
+    async_add_entities(entities)
     async_setup_spool_platform(
         hass,
         entry,
@@ -186,6 +193,33 @@ class TotalRemainingSensor(BambuFilamentsEntity, SensorEntity):
     @property
     def native_value(self) -> int:
         return sum(s.get("netWeight") or 0 for s in self._spools())
+
+
+class ShareLinkSensor(BambuFilamentsEntity, SensorEntity):
+    """The secret link of the public share page (state = full URL)."""
+
+    _attr_translation_key = "share_link"
+    _attr_icon = "mdi:link-variant"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}-share-link"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if share := self.coordinator.share:
+            self.async_on_remove(share.async_add_listener(self.async_write_ha_state))
+
+    @property
+    def available(self) -> bool:
+        # The link works independently of the cloud polling.
+        return self.coordinator.share is not None
+
+    @property
+    def native_value(self) -> str | None:
+        share = self.coordinator.share
+        return share.url() if share else None
 
 
 class SpoolEntityBase(CoordinatorEntity[BambuFilamentsCoordinator], SensorEntity):

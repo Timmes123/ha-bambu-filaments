@@ -25,6 +25,8 @@ Unofficial, reverse-engineered cloud API — not affiliated with Bambu Lab, may 
 - **Actions** to create, update, delete and refresh spools; catalog lookup.
 - **AMS bridge** (optional, needs ha-bambulab): auto-register loaded spools, sync AMS remaining weights, book runouts.
 - **Stock tracking**: pre-register sealed spools, auto-remove the manual entry when the real spool hits the AMS, deduct print usage from third-party spools.
+- **Missing colors**: which colors of the *current* Bambu shop range you don't have yet, per product line — handy when ordering.
+- **Share page**: a read-only link for friends showing which colors you have in stock, no Home Assistant login needed.
 - Email-code and 2FA login, re-auth, diagnostics, English and German.
 
 ## What the Bambu apps don't do — and this integration does
@@ -36,6 +38,10 @@ Unofficial, reverse-engineered cloud API — not affiliated with Bambu Lab, may 
 **Book third-party usage.** Nobody deducts consumption for non-RFID spools — not Studio, not the app, not the cloud. Enabled, every finished print job is booked once against the manual spool the library shows in that slot, using the per-slot grams the cloud records (multi-color prints included, wherever the print was started). Jobs are remembered so nothing is booked twice; RFID spools are untouched. If the AMS switches to a backup spool mid-print, the job is split between both spools by the print progress at the switch (an estimate, needs ha-bambulab); a job that cannot be booked shows up as a warning in the log. With the runout rule on, a manual spool whose slot runs empty while a print draws from it is set to 0 g.
 
 **No duplicate stock.** Register sealed spools in one step, without opening the box: type the 5-digit color code printed on the Bambu Lab packaging (e.g. `13504`) and product, slicer profile and official color are filled in for you (code field in the card, `color_code` in `create_spool`; count field for several spools). When the real spool is first loaded, Bambu creates a new RFID entry and your manual one would stay behind — the integration removes exactly one matching full manual spool automatically.
+
+**Know what to order.** The Studio color list still contains every color Bambu ever sold (PETG HF, the old PLA Silk, retired PETG Basic colors). Enabled, the integration reads the current range from the Bambu web shop once a day and the card's *Missing colors* mode lists exactly the colors on sale today that are not in your library, with stock state and a link to the shop page.
+
+**Show friends your colors.** Enabled, a public page lists your in-stock colors as tiles with name, color code and (optionally) remaining weight, filterable by PLA / PETG / other — send the link, no login needed.
 
 All of it is off by default and toggled on the **Features** step after login or later via *Configure*. The AMS features are greyed out until the [Bambu Lab printer integration](https://github.com/greghesp/ha-bambulab) is installed; usage booking and stock dedup work from the cloud alone.
 
@@ -58,6 +64,8 @@ All of it is off by default and toggled on the **Features** step after login or 
 |---|---|---|
 | `sensor.…_spools` | Number of spools | Attributes: full spool list, remaining grams per material |
 | `sensor.…_total_remaining_filament` | Total remaining grams | |
+| `sensor.…_share_link` | Link of the share page | Only with the share page enabled |
+| `button.…_renew_share_link` | Button | New secret link; every link handed out so far stops working |
 
 **Per spool** (e.g. *PLA Matte Charcoal*):
 
@@ -69,7 +77,7 @@ All of it is off by default and toggled on the **Features** step after login or 
 
 ## Options
 
-Shown on the **Features** step during setup and behind *Configure*: polling interval (default 15 min; AMS and print changes trigger extra refreshes), one device per spool, auto-remove manual duplicates, auto-register AMS spools, sync remaining weight from the AMS, mark as empty on runout (plus an optional percent rule), deduct print usage, color name language (auto/German/English).
+Shown on the **Features** step during setup and behind *Configure*: polling interval (default 15 min; AMS and print changes trigger extra refreshes), one device per spool, auto-remove manual duplicates, auto-register AMS spools, sync remaining weight from the AMS, mark as empty on runout (plus an optional percent rule), deduct print usage, color name language (auto/German/English), compare with the current Bambu shop range, public share page (plus showing remaining weight there).
 
 ## Actions
 
@@ -83,6 +91,7 @@ Shown on the **Features** step during setup and behind *Configure*: polling inte
 | `bambu_filaments.create_spool` | `color_code` **or** `vendor`, `material`, `name`, `color`; plus `total_g`, `remaining_g`, `filament_id`, `display_name`, `note`, `count` | Add spool(s); `color_code` = 5-digit code on the Bambu box (fills everything else), `filament_id: ""` for third-party brands, `count` 1–50 |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete from the cloud library |
 | `bambu_filaments.get_catalog` | – | Vendor/product combinations the cloud accepts, plus your own slicer presets as `presets` (response data) |
+| `bambu_filaments.get_shop_range` | – | Colors the Bambu shop currently sells: code, product line, hex, stock state, shop link (response data; needs the shop comparison option) |
 
 `spool_id` is the cloud id, shown as attribute on every spool sensor. Write actions are **admin-only** — they change your Bambu account.
 
@@ -121,6 +130,16 @@ compact: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
 
+**Missing colors** — `mode: missing` lists the colors of the current Bambu shop range you don't own (needs the *Compare with the current Bambu shop range* option). Tap a tile to open it in the shop:
+
+```yaml
+type: custom:bambu-filaments-card
+mode: missing
+missing_products: [PETG Basic, PETG Matte]
+```
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-missing.png" width="400" alt="Card listing the PETG Basic and PETG Matte colors that are not in the library">
+
 **Add and edit dialogs** — Bambu color code from the box, catalog dropdowns, color picker, count field for stock, custom/third-party brands with a linked slicer profile (official or one of your own Studio presets) so Studio can assign them, and a cog per row to edit or delete:
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-dialog.png" width="300" alt="In-card dialog for adding a new spool"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-add-custom.png" width="300" alt="Custom third-party brand mode of the add dialog"> <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-edit-dialog.png" width="300" alt="In-card dialog for editing an existing spool">
@@ -135,6 +154,7 @@ Everything is configurable in the visual editor.
 
 | Option | Default | Description |
 |---|---|---|
+| `mode` | `spools` | `spools` (your library) or `missing` (current shop colors you don't own) |
 | `entity` | auto | The aggregate spools sensor |
 | `title` | "Filament" | Card title ("" hides the header) |
 | `group_by` | `line` | `line` (brand + product), `product` (product across brands), `material`, `none` |
@@ -163,6 +183,8 @@ Everything is configurable in the visual editor.
 | `low_threshold` | `20` | Bar turns red below this % |
 | `warn_threshold` | `50` | Bar turns orange below this % |
 | `max_height` | – | Scroll after this many pixels |
+| `missing_products` | – | `mode: missing` only: product lines to check, e.g. `[PLA Basic, PLA Matte]` (none = all) |
+| `missing_count_empty` | `true` | `mode: missing` only: a color you only have empty spools of counts as missing |
 
 **Link to a spool's details or edit dialog:** open the dashboard view with `?spool=<spool_id>` for the details dialog or `?edit_spool=<spool_id>` for the edit dialog (e.g. `/dashboard-filament/storage?spool=15040408`, the id is in the `spools` attribute) and the card opens it once. Handy for markdown links, push notifications or QR codes on spool labels.
 
@@ -172,11 +194,24 @@ The history chart needs the per-spool remaining-weight sensors (enabled by defau
 
 The quick actions are meant for corrections and for spools whose usage is not booked automatically (see [Options](#options)): with print-usage deduction enabled, manual spools in the AMS are deducted after every print, and RFID spools are kept current by the AMS itself.
 
+## Share page
+
+Turn on *Public share page* under *Configure*. The link appears as the **Share link** sensor on the *Bambu Filament Library* device — copy it and send it to friends. They see the colors you have in stock (spools with filament left, identical spools merged into one tile), filterable by PLA, PETG and other materials; with *Show remaining weight* also grams and spool count. Notes, RFIDs and printer names are never shown.
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/share-page.png" width="300" alt="Share page on a phone, filtered to PETG">
+
+- Home Assistant must be reachable from the internet (Nabu Casa or your own reverse proxy); the page lives at `/bambu_filaments/share/<secret>`.
+- The secret is long and random; **Renew share link** invalidates every link handed out so far.
+- Friends who open the link see your Home Assistant address. To hide it, put the page behind its own (sub)domain on your reverse proxy that forwards only `/bambu_filaments/share/`.
+- With the shop comparison on, current Bambu colors are shown with the shop's product photo of that color (a sample print); colors Bambu no longer sells and third-party brands get a plain color tile.
+
 ## FAQ
 
 **Does this control my printer?** No — nothing is sent to your printers. AMS information comes from the Bambu Lab printer integration's sensors inside Home Assistant.
 
 **Do I need ha-bambulab?** Only for the AMS features. Library, card, stock dedup and usage booking work with the cloud account alone.
+
+**Is the shop comparison official?** No. The Bambu shop has no API; the integration reads the public sitemap and product pages once a day, slowly (a few seconds between pages), and keeps the last good result if anything fails. A shop redesign can break it. `store.bambulab.com` redirects to your regional shop, so the range is the one you would order from.
 
 **Why sign in again after a few months?** Bambu tokens expire after ~90 days and cannot be refreshed. Your password only goes to Bambu's login endpoint and is never stored.
 

@@ -49,8 +49,14 @@ from .const import (
     DEFAULT_EMPTY_PCT,
     DEFAULT_SYNC_REMAINING,
     DEFAULT_SCAN_INTERVAL_MIN,
+    DEFAULT_SHARE_PAGE,
+    DEFAULT_SHARE_REMAINING,
+    DEFAULT_SHOP_SYNC,
     DEFAULT_SPOOL_ENTITIES,
     DOMAIN,
+    OPT_SHARE_PAGE,
+    OPT_SHARE_REMAINING,
+    OPT_SHOP_SYNC,
     OPT_AUTO_DEDUP,
     OPT_AUTO_REGISTER,
     OPT_AUTO_REGISTER_UNAVAILABLE,
@@ -321,6 +327,18 @@ def build_options_schema(options: Mapping[str, Any], has_bambulab: bool) -> vol.
                     translation_key="color_language",
                 )
             ),
+            vol.Required(
+                OPT_SHOP_SYNC,
+                default=options.get(OPT_SHOP_SYNC, DEFAULT_SHOP_SYNC),
+            ): bool,
+            vol.Required(
+                OPT_SHARE_PAGE,
+                default=options.get(OPT_SHARE_PAGE, DEFAULT_SHARE_PAGE),
+            ): bool,
+            vol.Required(
+                OPT_SHARE_REMAINING,
+                default=options.get(OPT_SHARE_REMAINING, DEFAULT_SHARE_REMAINING),
+            ): bool,
         }
     )
     return schema

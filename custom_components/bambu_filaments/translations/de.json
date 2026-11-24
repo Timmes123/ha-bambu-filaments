@@ -41,7 +41,10 @@
           "empty_on_removal_pct_unavailable": "Zusätzlich als leer buchen, wenn beim Entnehmen höchstens so viel übrig ist (%, 0 = aus) (nicht verfügbar)",
           "deduct_print_usage": "Druckverbrauch von manuell angelegten Spulen abziehen",
           "empty_on_runout": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat",
-          "empty_on_runout_unavailable": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat (nicht verfügbar)"
+          "empty_on_runout_unavailable": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat (nicht verfügbar)",
+          "shop_sync": "Mit dem aktuellen Bambu-Shop-Sortiment abgleichen",
+          "share_page": "Öffentliche Freigabe-Seite (nur lesen, ohne Login)",
+          "share_show_remaining": "Restmenge auf der Freigabe-Seite anzeigen"
         },
         "data_description": {
           "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat.",
@@ -53,7 +56,10 @@
           "empty_on_removal_pct_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
           "deduct_print_usage": "Bambu bucht für Fremdmarken-Spulen nie Verbrauch. Mit dieser Option wird jeder nach dem Einschalten beendete Druckauftrag genau einmal von der manuellen Spule abgezogen, die laut Bibliothek in dem AMS-Slot liegt - mit den Gramm pro Slot, die die Cloud zum Auftrag speichert. RFID-Spulen werden nie angefasst, anderswo bereits gebuchte Aufträge übersprungen. Abgebrochene Drucke werden anteilig gebucht, wenn die Drucker-Integration den Fortschritt gesehen hat. Wechselt das AMS mitten im Druck auf eine Ersatzspule, wird der Auftrag anhand des Druckfortschritts beim Wechsel auf beide Spulen aufgeteilt (Schätzung; benötigt die Drucker-Integration).",
           "empty_on_runout": "Die sichere Leerlauf-Regel: Eine Spule, die aktiver Slot eines laufenden oder pausierten Drucks war (ein AMS-Backup-Wechsel wird mitgemerkt) und vor Druckende aus dem AMS genommen wird, wird auf 0 g gesetzt. Spulen, die nach einem fertigen Druck entnommen werden, oder mitten im Druck mit über 20 % Rest (Filamentwechsel), werden nie angefasst. Spulen ohne RFID: Meldet der Slot, aus dem ein laufender Druck zieht, leer, wird die dort zugeordnete manuelle Spule auf 0 g gesetzt; ein Herausnehmen bei pausiertem Druck gilt als Filamentwechsel.",
-          "empty_on_runout_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}"
+          "empty_on_runout_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
+          "shop_sync": "Liest einmal am Tag langsam im Hintergrund, welche Farben der Bambu-Webshop aktuell verkauft (mit Produktfoto je Farbe und Lieferstatus). Nötig für den Kartenmodus „Fehlende Farben“ und für die Fotos auf der Freigabe-Seite. Inoffiziell: Der Shop hat keine Schnittstelle, ein Umbau des Shops kann das brechen.",
+          "share_page": "Stellt eine Seite bereit, die Freunde ohne Home-Assistant-Konto öffnen können und die zeigt, welche Farben du vorrätig hast. Der geheime Link steht im Sensor „Freigabe-Link“ am Gerät Bambu Filament Library; der Knopf „Freigabe-Link erneuern“ dort macht alle bisher verschickten Links ungültig. Home Assistant muss dafür aus dem Internet erreichbar sein.",
+          "share_show_remaining": "Zeigt auf der Freigabe-Seite bei jeder Farbe die Restmenge und die Anzahl der Spulen."
         }
       }
     },
@@ -87,7 +93,10 @@
           "empty_on_removal_pct_unavailable": "Zusätzlich als leer buchen, wenn beim Entnehmen höchstens so viel übrig ist (%, 0 = aus) (nicht verfügbar)",
           "deduct_print_usage": "Druckverbrauch von manuell angelegten Spulen abziehen",
           "empty_on_runout": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat",
-          "empty_on_runout_unavailable": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat (nicht verfügbar)"
+          "empty_on_runout_unavailable": "Spule als leer buchen, wenn sie entnommen wird, während ein Druck von ihr gedruckt hat (nicht verfügbar)",
+          "shop_sync": "Mit dem aktuellen Bambu-Shop-Sortiment abgleichen",
+          "share_page": "Öffentliche Freigabe-Seite (nur lesen, ohne Login)",
+          "share_show_remaining": "Restmenge auf der Freigabe-Seite anzeigen"
         },
         "data_description": {
           "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat.",
@@ -99,7 +108,10 @@
           "empty_on_removal_pct_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
           "deduct_print_usage": "Bambu bucht für Fremdmarken-Spulen nie Verbrauch. Mit dieser Option wird jeder nach dem Einschalten beendete Druckauftrag genau einmal von der manuellen Spule abgezogen, die laut Bibliothek in dem AMS-Slot liegt - mit den Gramm pro Slot, die die Cloud zum Auftrag speichert. RFID-Spulen werden nie angefasst, anderswo bereits gebuchte Aufträge übersprungen. Abgebrochene Drucke werden anteilig gebucht, wenn die Drucker-Integration den Fortschritt gesehen hat. Wechselt das AMS mitten im Druck auf eine Ersatzspule, wird der Auftrag anhand des Druckfortschritts beim Wechsel auf beide Spulen aufgeteilt (Schätzung; benötigt die Drucker-Integration).",
           "empty_on_runout": "Die sichere Leerlauf-Regel: Eine Spule, die aktiver Slot eines laufenden oder pausierten Drucks war (ein AMS-Backup-Wechsel wird mitgemerkt) und vor Druckende aus dem AMS genommen wird, wird auf 0 g gesetzt. Spulen, die nach einem fertigen Druck entnommen werden, oder mitten im Druck mit über 20 % Rest (Filamentwechsel), werden nie angefasst. Spulen ohne RFID: Meldet der Slot, aus dem ein laufender Druck zieht, leer, wird die dort zugeordnete manuelle Spule auf 0 g gesetzt; ein Herausnehmen bei pausiertem Druck gilt als Filamentwechsel.",
-          "empty_on_runout_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}"
+          "empty_on_runout_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
+          "shop_sync": "Liest einmal am Tag langsam im Hintergrund, welche Farben der Bambu-Webshop aktuell verkauft (mit Produktfoto je Farbe und Lieferstatus). Nötig für den Kartenmodus „Fehlende Farben“ und für die Fotos auf der Freigabe-Seite. Inoffiziell: Der Shop hat keine Schnittstelle, ein Umbau des Shops kann das brechen.",
+          "share_page": "Stellt eine Seite bereit, die Freunde ohne Home-Assistant-Konto öffnen können und die zeigt, welche Farben du vorrätig hast. Der geheime Link steht im Sensor „Freigabe-Link“ am Gerät Bambu Filament Library; der Knopf „Freigabe-Link erneuern“ dort macht alle bisher verschickten Links ungültig. Home Assistant muss dafür aus dem Internet erreichbar sein.",
+          "share_show_remaining": "Zeigt auf der Freigabe-Seite bei jeder Farbe die Restmenge und die Anzahl der Spulen."
         }
       }
     }
@@ -132,11 +144,17 @@
       },
       "spool_remaining_g": {
         "name": "Restgewicht"
+      },
+      "share_link": {
+        "name": "Freigabe-Link"
       }
     },
     "button": {
       "delete_spool": {
         "name": "Aus Bambu-Cloud löschen"
+      },
+      "share_regenerate": {
+        "name": "Freigabe-Link erneuern"
       }
     }
   },
@@ -296,6 +314,10 @@
           "description": "Die Cloud-ID der zu löschenden Spule."
         }
       }
+    },
+    "get_shop_range": {
+      "name": "Shop-Sortiment abrufen",
+      "description": "Liefert die Filamentfarben, die der Bambu-Webshop aktuell verkauft (Code, Sorte, Produktfoto, Lieferstatus). Leer, solange der Shop-Abgleich in den Optionen aus ist."
     }
   }
 }

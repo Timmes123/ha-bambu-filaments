@@ -25,7 +25,7 @@ shutil.copy(
     HERE / "bambu-filaments-card.js",
 )
 
-SHOTS = ["overview", "combine", "low-stock", "loaded", "editor"]
+SHOTS = ["overview", "combine", "low-stock", "loaded", "missing", "editor"]
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch()

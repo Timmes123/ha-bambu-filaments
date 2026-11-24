@@ -171,6 +171,14 @@ class BambuColorDB:
         """Every known color code, for the card's create dialog."""
         return [self.by_code(code, language) for code in sorted(self._by_code)]
 
+    def strict_code(self, filament_id: str | None, colors: list[str]) -> str | None:
+        """Color code only for an exact filament + color match (no color-only
+        fallback) - used to decide which shop colors the user owns."""
+        if not filament_id or not colors:
+            return None
+        record = self._by_id_color.get((filament_id, _color_key(colors)))
+        return record.get("code") if record else None
+
     def tray_code(self, filament_id: str | None, colors: list[str]) -> str | None:
         """Bambu's short tray color code (e.g. "A0") for an exact filament+color match."""
         if not filament_id or not colors:

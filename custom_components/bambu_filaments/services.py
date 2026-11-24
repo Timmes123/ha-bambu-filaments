@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.util import dt as dt_util
 
 from .api import AuthExpired, BambuCloudError
 from .colors import normalize_hex
@@ -25,6 +26,7 @@ SERVICE_UPDATE_SPOOL = "update_spool"
 SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
 SERVICE_GET_CATALOG = "get_catalog"
+SERVICE_GET_SHOP_RANGE = "get_shop_range"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -395,7 +397,31 @@ def async_register_services(hass: HomeAssistant) -> None:
         colors = coordinator.colordb.codes(coordinator.color_language)
         return {"filaments": filaments, "presets": presets, "colors": colors}
 
+    async def handle_get_shop_range(call: ServiceCall) -> dict[str, Any]:
+        """Colors the Bambu shop sells right now (for the missing-colors card).
+
+        Ownership is computed by the card from the live spool list, so this
+        response only changes when the daily shop snapshot does.
+        """
+        coordinator = _first_coordinator(hass)
+        shop = coordinator.shop
+        if shop is None:
+            return {"enabled": False, "fetched_at": None, "shop_url": None, "colors": []}
+        fetched = shop.fetched_at
+        return {
+            "enabled": True,
+            "fetched_at": dt_util.utc_from_timestamp(fetched).isoformat() if fetched else None,
+            "shop_url": shop.shop_url,
+            "colors": shop.range_entries(coordinator.colordb, coordinator.color_language),
+        }
+
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, handle_refresh)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_SHOP_RANGE,
+        handle_get_shop_range,
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_CATALOG,

@@ -11,13 +11,15 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import BambuFilamentsConfigEntry
 from .api import AuthExpired, BambuCloudError
+from .const import DOMAIN
 from .coordinator import BambuFilamentsCoordinator
-from .entity import async_setup_spool_platform, spool_device_info
+from .entity import async_setup_spool_platform, remove_stale_hub_entity, spool_device_info
 
 
 async def async_setup_entry(
@@ -26,6 +28,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up one delete button per spool device (follows the sensor option)."""
+    coordinator = entry.runtime_data
+    if coordinator.share is not None:
+        async_add_entities([ShareLinkRegenerateButton(coordinator, entry)])
+    else:
+        remove_stale_hub_entity(hass, "button", f"{entry.entry_id}-share-regenerate")
     async_setup_spool_platform(
         hass,
         entry,
@@ -70,3 +77,27 @@ class SpoolDeleteButton(CoordinatorEntity[BambuFilamentsCoordinator], ButtonEnti
         except BambuCloudError as err:
             raise HomeAssistantError(f"Deleting the spool failed: {err}") from err
         await self.coordinator.async_request_refresh()
+
+
+class ShareLinkRegenerateButton(CoordinatorEntity[BambuFilamentsCoordinator], ButtonEntity):
+    """New secret for the share page - every link shared so far stops working."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "share_regenerate"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:link-variant-off"
+
+    def __init__(
+        self, coordinator: BambuFilamentsCoordinator, entry: BambuFilamentsConfigEntry
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}-share-regenerate"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.share is not None
+
+    async def async_press(self) -> None:
+        if share := self.coordinator.share:
+            await share.async_regenerate()

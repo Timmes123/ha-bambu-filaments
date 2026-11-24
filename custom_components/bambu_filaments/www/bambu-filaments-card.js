@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.2.1";
+const CARD_VERSION = "2.3.0";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -125,6 +125,22 @@ const STR = {
     e_low: "Red below (%)",
     e_warn: "Orange below (%)",
     e_max_height: "Max. height (px, empty = unlimited)",
+    // missing-colors mode
+    e_mode: "Show",
+    mo_spools: "My spools",
+    mo_missing: "Missing colors (current Bambu shop range)",
+    e_missing: "Missing colors",
+    e_missing_products: "Product lines (none = all)",
+    e_missing_empty: "Colors I only have empty spools of count as missing",
+    e_missing_noshop: "Product lines appear once the shop range is loaded.",
+    mi_title: "Missing colors",
+    mi_count: (n) => `${n} missing`,
+    mi_off: "The shop comparison is off. Turn on \"Compare with the current Bambu shop range\" in the integration options.",
+    mi_loading: "Reading the Bambu shop range - this takes a few minutes after enabling the option.",
+    mi_error: "The shop range could not be loaded.",
+    mi_none: "You have every color of the selected product lines.",
+    mi_sold_out: "sold out",
+    mi_as_of: "Shop range of",
   },
   de: {
     spools: (n) => `${n} Spule${n === 1 ? "" : "n"}`,
@@ -215,10 +231,27 @@ const STR = {
     e_low: "Rot unter (%)",
     e_warn: "Orange unter (%)",
     e_max_height: "Max. Höhe (px, leer = unbegrenzt)",
+    e_mode: "Anzeigen",
+    mo_spools: "Meine Spulen",
+    mo_missing: "Fehlende Farben (aktuelles Bambu-Shop-Sortiment)",
+    e_missing: "Fehlende Farben",
+    e_missing_products: "Sorten (nichts = alle)",
+    e_missing_empty: "Farben, von denen ich nur leere Spulen habe, gelten als fehlend",
+    e_missing_noshop: "Die Sorten erscheinen, sobald das Shop-Sortiment geladen ist.",
+    mi_title: "Fehlende Farben",
+    mi_count: (n) => `${n} fehlen`,
+    mi_off: "Der Shop-Abgleich ist aus. In den Optionen der Integration „Mit dem aktuellen Bambu-Shop-Sortiment abgleichen“ einschalten.",
+    mi_loading: "Das Bambu-Shop-Sortiment wird gelesen - das dauert nach dem Einschalten ein paar Minuten.",
+    mi_error: "Das Shop-Sortiment konnte nicht geladen werden.",
+    mi_none: "Du hast alle Farben der ausgewählten Sorten.",
+    mi_sold_out: "ausverkauft",
+    mi_as_of: "Shop-Sortiment vom",
   },
 };
 
 const DEFAULTS = {
+  mode: "spools",
+  missing_count_empty: true,
   group_by: "line",
   sort: "name",
   combine: false,
@@ -281,6 +314,15 @@ function listFilter(config, key) {
   const exclude = config[`${key}_mode`] === "exclude";
   const get = LIST_FILTERS[key];
   return (s) => list.includes(get(s)) !== exclude;
+}
+
+// Shop range data is refreshed by the backend once a day.
+const SHOP_MAX_AGE_MS = 30 * 60 * 1000;
+const SAFE_URL_RE = /^https:\/\/[A-Za-z0-9.-]+\/[A-Za-z0-9._~\/%+,-]*(\?[A-Za-z0-9=&._-]*)?$/;
+
+// Shop links and swatch images come from scraped pages: plain https only.
+function safeUrl(u) {
+  return typeof u === "string" && SAFE_URL_RE.test(u);
 }
 
 function fmtG(g) {
@@ -520,6 +562,10 @@ class BambuFilamentsCard extends HTMLElement {
       this.shadowRoot.innerHTML = `<ha-card><div class="msg">${esc(t.no_entity)}</div></ha-card>${this._css()}`;
       return;
     }
+    if (c.mode === "missing") {
+      this._renderMissing(st, t);
+      return;
+    }
     const spools = this._visibleSpools(st);
     const totalG = spools.reduce((a, s) => a + (s.remaining_g || 0), 0);
     const title = c.title !== undefined ? c.title : t.title;
@@ -612,6 +658,137 @@ class BambuFilamentsCard extends HTMLElement {
         })
       );
     }
+  }
+
+  // ---------------------------------------------------------- missing colors
+
+  // The shop range only changes once a day - fetched once per card and
+  // re-fetched after SHOP_MAX_AGE_MS; ownership is recomputed from the live
+  // spool list on every render.
+  _loadShopRange() {
+    if (this._shopLoading) return;
+    this._shopLoading = true;
+    this._hass.callService("bambu_filaments", "get_shop_range", {}, undefined, false, true)
+      .then((resp) => {
+        this._shop = resp?.response || { enabled: false, colors: [] };
+        this._shopError = false;
+      })
+      .catch(() => {
+        this._shopError = true;
+      })
+      .finally(() => {
+        this._shopLoading = false;
+        this._shopAt = Date.now();
+        if (this._lastState) {
+          this._configDirty = true;
+          this._render(this._lastState);
+        }
+      });
+  }
+
+  _missingColors(st) {
+    const c = this._config;
+    const owned = new Map();
+    for (const s of st.attributes.spools || []) {
+      if (s.vendor !== "Bambu Lab" || !s.bambu_color_code) continue;
+      const key = `${s.bambu_color_code}|${s.filament_id || ""}`;
+      const o = owned.get(key) || { full: 0, empty: 0 };
+      if ((s.remaining_g ?? 0) > 0) o.full += 1;
+      else o.empty += 1;
+      owned.set(key, o);
+    }
+    const products = Array.isArray(c.missing_products) ? c.missing_products : [];
+    return (this._shop?.colors || []).filter((e) => {
+      if (products.length && !products.includes(e.product)) return false;
+      const o = owned.get(`${e.code}|${e.filament_id || ""}`) || { full: 0, empty: 0 };
+      return o.full === 0 && (c.missing_count_empty || o.empty === 0);
+    });
+  }
+
+  _renderMissing(st, t) {
+    const c = this._config;
+    this._lastState = st;
+    const stale = this._shopAt && Date.now() - this._shopAt > SHOP_MAX_AGE_MS;
+    if ((!this._shop && !this._shopError) || stale) this._loadShopRange();
+    const title = c.title !== undefined ? c.title : t.mi_title;
+    let body;
+    let sum = "";
+    if (!this._shop) {
+      body = `<div class="msg">${esc(this._shopError ? t.mi_error : t.d_loading)}</div>`;
+    } else if (!this._shop.enabled) {
+      body = `<div class="msg">${esc(t.mi_off)}</div>`;
+    } else if (!this._shop.fetched_at) {
+      body = `<div class="msg">${esc(t.mi_loading)}</div>`;
+    } else {
+      const missing = this._missingColors(st);
+      sum = t.mi_count(missing.length);
+      const groups = new Map();
+      for (const e of missing) {
+        if (!groups.has(e.product)) groups.set(e.product, []);
+        groups.get(e.product).push(e);
+      }
+      body = missing.length ? [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([gname, items]) => {
+          const collapsed = this._collapsed.has(gname);
+          const tiles = collapsed ? "" : `<div class="mgrid">${items.map((e) => this._missingTile(e, t)).join("")}</div>`;
+          return `<div class="group">
+            <div class="ghead" data-group="${esc(gname)}">
+              <ha-icon icon="mdi:chevron-${collapsed ? "right" : "down"}"></ha-icon>
+              <span class="gname">${esc(gname)}</span>
+              <span class="chip">${items.length}</span>
+            </div>${tiles}</div>`;
+        }).join("")
+        : `<div class="msg">${esc(t.mi_none)}</div>`;
+      const asOf = new Date(this._shop.fetched_at);
+      if (!Number.isNaN(asOf.getTime())) {
+        body += `<div class="asof">${esc(t.mi_as_of)} ${esc(asOf.toLocaleDateString(this._hass?.locale?.language || undefined))}</div>`;
+      }
+    }
+    const scroll = c.max_height ? `style="max-height:${Number(c.max_height)}px;overflow-y:auto"` : "";
+    const backendVersion = st.attributes.version;
+    const staleCard = backendVersion && backendVersion !== CARD_VERSION;
+    this.shadowRoot.innerHTML = `
+      <ha-card>
+        ${staleCard ? `<div class="stale"><span>${esc(t.stale)}</span><button class="stale-btn">${esc(t.reload)}</button></div>` : ""}
+        ${title ? `<div class="head"><div class="title">${esc(title)}</div><div class="sum">${esc(sum)}</div></div>` : ""}
+        <div class="list" ${scroll}>${body}</div>
+      </ha-card>${this._css()}`;
+    this.shadowRoot.querySelector(".stale-btn")?.addEventListener("click", () => reloadCard());
+    this.shadowRoot.querySelectorAll(".ghead").forEach((el) =>
+      el.addEventListener("click", () => {
+        const g = el.dataset.group;
+        this._collapsed.has(g) ? this._collapsed.delete(g) : this._collapsed.add(g);
+        this._render(st);
+      })
+    );
+    // A photo that fails to load is replaced by the color fill.
+    this.shadowRoot.querySelectorAll(".msw img").forEach((img) =>
+      img.addEventListener("error", () => {
+        const box = img.parentElement;
+        box.setAttribute("style", box.dataset.fill || "");
+        img.remove();
+      })
+    );
+  }
+
+  _missingTile(e, t) {
+    const colors = (e.colors || []).map(normHex).filter(Boolean);
+    const fill = colors.length > 1
+      ? `background:linear-gradient(135deg, ${colors.map(esc).join(", ")})`
+      : `background:${esc(colors[0] || "#888")}`;
+    // With a photo the tile stays neutral (the photo has its own light
+    // background); the color fill only appears if the photo fails to load.
+    const photo = safeUrl(e.image);
+    const img = photo
+      ? `<img src="${esc(e.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "";
+    const inner = `
+      <div class="msw" ${photo ? `data-fill="${fill}"` : `style="${fill}"`}>${img}</div>
+      <div class="mname">${esc(e.name)}</div>
+      <div class="mmeta">${esc(e.code)}${e.available ? "" : ` · <span class="soldout">${esc(t.mi_sold_out)}</span>`}</div>`;
+    return safeUrl(e.url)
+      ? `<a class="mtile" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">${inner}</a>`
+      : `<div class="mtile">${inner}</div>`;
   }
 
   // The per-spool remaining-weight sensor, found via its device (identifier
@@ -1441,6 +1618,18 @@ class BambuFilamentsCard extends HTMLElement {
                 border-radius:8px; color:var(--secondary-text-color); cursor:pointer; }
       .addrow:hover { color:var(--primary-text-color); border-color:var(--secondary-text-color); }
       .addrow ha-icon { --mdc-icon-size:18px; }
+      .mgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(86px, 1fr)); gap:8px;
+               padding:8px 0 6px; }
+      .mtile { display:block; min-width:0; color:inherit; text-decoration:none; border-radius:10px;
+               padding:6px; border:1px solid var(--divider-color); }
+      a.mtile:hover { border-color:var(--secondary-text-color); }
+      .msw { position:relative; aspect-ratio:1; border-radius:7px; overflow:hidden;
+             border:1px solid var(--divider-color); background:#f2f2f2; }
+      .msw img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+      .mname { font-size:0.85em; font-weight:500; margin-top:4px; overflow-wrap:anywhere; line-height:1.25; }
+      .mmeta { font-size:0.75em; color:var(--secondary-text-color); }
+      .soldout { color:var(--error-color, #e74c3c); }
+      .asof { font-size:0.75em; color:var(--secondary-text-color); text-align:right; padding:4px 0 2px; }
     </style>`;
   }
 }
@@ -1459,6 +1648,23 @@ class BambuFilamentsCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._rendered) this._render();
+    this._loadShopProducts();
+  }
+
+  // Product lines of the current shop range, for the missing-colors filter.
+  _loadShopProducts() {
+    if (this._config?.mode !== "missing" || this._shopProducts || this._shopLoading || !this._hass) return;
+    this._shopLoading = true;
+    this._hass.callService("bambu_filaments", "get_shop_range", {}, undefined, false, true)
+      .then((resp) => {
+        const colors = resp?.response?.colors || [];
+        this._shopProducts = [...new Set(colors.map((e) => e.product).filter(Boolean))];
+      })
+      .catch(() => { this._shopProducts = []; })
+      .finally(() => {
+        this._shopLoading = false;
+        this._render();
+      });
   }
 
   _fire() {
@@ -1503,6 +1709,19 @@ class BambuFilamentsCardEditor extends HTMLElement {
         <div class="mats">${values.map((v) => `
           <label class="chk"><input type="checkbox" data-list="${key}" data-val="${esc(v)}" ${selected.includes(v) ? "checked" : ""}/> ${esc(v)}</label>`).join("")}</div>`;
     };
+    const missingMode = c.mode === "missing";
+    const missingSection = () => {
+      const selected = Array.isArray(c.missing_products) ? c.missing_products : [];
+      const values = [...new Set([...(this._shopProducts || []), ...selected])]
+        .sort((a, b) => a.localeCompare(b));
+      return `
+        <div class="sect">${t.e_missing}</div>
+        ${check("missing_count_empty", t.e_missing_empty)}
+        <div class="lhead"><span>${t.e_missing_products}</span></div>
+        ${values.length ? `<div class="mats">${values.map((v) => `
+          <label class="chk"><input type="checkbox" data-list="missing_products" data-val="${esc(v)}" ${selected.includes(v) ? "checked" : ""}/> ${esc(v)}</label>`).join("")}</div>`
+          : `<div class="lhead">${t.e_missing_noshop}</div>`}`;
+    };
     this.shadowRoot.innerHTML = `
       <style>
         .form { display:flex; flex-direction:column; gap:10px; padding:4px 0; }
@@ -1522,8 +1741,14 @@ class BambuFilamentsCardEditor extends HTMLElement {
                  margin-top:4px; font-size:0.9em; color: var(--secondary-text-color); }
       </style>
       <div class="form">
+        <label>${t.e_mode}
+          <select data-f="mode">
+            <option value="spools" ${missingMode ? "" : "selected"}>${t.mo_spools}</option>
+            <option value="missing" ${missingMode ? "selected" : ""}>${t.mo_missing}</option>
+          </select></label>
         <label>${t.e_entity}<input type="text" data-f="entity" value="${esc(c.entity || "")}"/></label>
-        <label>${t.e_title}<input type="text" data-f="title" value="${esc(c.title !== undefined ? c.title : t.title)}"/></label>
+        <label>${t.e_title}<input type="text" data-f="title" value="${esc(c.title !== undefined ? c.title : missingMode ? t.mi_title : t.title)}"/></label>
+        ${missingMode ? missingSection() : `
         <div class="cols">
           <label>${t.e_group}
             <select data-f="group_by">
@@ -1574,6 +1799,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
           <label>${t.e_low}<input type="number" min="0" max="100" data-f="low_threshold" value="${c.low_threshold}"/></label>
           <label>${t.e_warn}<input type="number" min="0" max="100" data-f="warn_threshold" value="${c.warn_threshold}"/></label>
         </div>
+        `}
         <label>${t.e_max_height}<input type="number" min="100" data-f="max_height" value="${c.max_height || ""}"/></label>
       </div>`;
     this.shadowRoot.querySelectorAll("[data-list]").forEach((el) =>
@@ -1606,6 +1832,10 @@ class BambuFilamentsCardEditor extends HTMLElement {
         else if (el.value === "") delete this._config[f];
         else this._config[f] = el.value;
         this._fire();
+        if (f === "mode") {
+          this._render();
+          this._loadShopProducts();
+        }
       })
     );
   }

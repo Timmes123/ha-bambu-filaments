@@ -13,7 +13,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -32,6 +32,14 @@ _TIME_RE = re.compile(r"\d{1,2}:\d{2}")
 SpoolEntityFactory = Callable[
     [BambuFilamentsCoordinator, ConfigEntry, int], Iterable[Entity]
 ]
+
+
+@callback
+def remove_stale_hub_entity(hass: HomeAssistant, platform: str, unique_id: str) -> None:
+    """Drop a hub entity whose feature was switched off (no orphan left behind)."""
+    registry = er.async_get(hass)
+    if entity_id := registry.async_get_entity_id(platform, DOMAIN, unique_id):
+        registry.async_remove(entity_id)
 
 
 def clean_display_name(spool: dict[str, Any]) -> str | None:

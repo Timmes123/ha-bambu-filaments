@@ -27,6 +27,16 @@ OPT_EMPTY_PCT = "empty_on_removal_pct"
 OPT_EMPTY_PCT_UNAVAILABLE = "empty_on_removal_pct_unavailable"
 OPT_DEDUCT_USAGE = "deduct_print_usage"
 
+# Current Bambu shop range (missing-colors card mode, swatch images) and the
+# public read-only share page.
+OPT_SHOP_SYNC = "shop_sync"
+OPT_SHARE_PAGE = "share_page"
+OPT_SHARE_REMAINING = "share_show_remaining"
+DEFAULT_SHOP_SYNC = False
+DEFAULT_SHARE_PAGE = False
+DEFAULT_SHARE_REMAINING = False
+SHARE_URL_BASE = "/bambu_filaments/share"
+
 DEFAULT_SCAN_INTERVAL_MIN = 15
 DEFAULT_SPOOL_ENTITIES = True
 DEFAULT_AUTO_DEDUP = False

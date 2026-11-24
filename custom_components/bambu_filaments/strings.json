@@ -41,7 +41,10 @@
           "empty_on_removal_pct_unavailable": "Also mark as empty when removed with at most this much left (%, 0 = off) (unavailable)",
           "deduct_print_usage": "Deduct print usage from manually created spools",
           "empty_on_runout": "Mark a spool as empty when it is removed while a print was drawing from it",
-          "empty_on_runout_unavailable": "Mark a spool as empty when it is removed while a print was drawing from it (unavailable)"
+          "empty_on_runout_unavailable": "Mark a spool as empty when it is removed while a print was drawing from it (unavailable)",
+          "shop_sync": "Compare with the current Bambu shop range",
+          "share_page": "Public share page (read-only link, no login)",
+          "share_show_remaining": "Show remaining weight on the share page"
         },
         "data_description": {
           "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates.",
@@ -53,7 +56,10 @@
           "empty_on_removal_pct_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
           "deduct_print_usage": "Bambu never books consumption for third-party spools. With this on, every print job finished after enabling is booked once against the manual spool the library shows in that AMS slot, using the per-slot grams the cloud records for the job. RFID spools are never touched; jobs already booked elsewhere are skipped. Cancelled jobs are booked proportionally when the printer integration saw the progress. If the AMS switches to a backup spool mid-print, the job is split between both spools by the print progress at the switch (an estimate; needs the printer integration).",
           "empty_on_runout": "The safe runout rule: a spool that was the active tray of a running or paused print (an AMS backup switch is remembered too) and is then taken out of the AMS before that print ends is set to 0 g. Spools removed after a finished print, or mid-print with more than 20 % left (filament change), are never touched. Spools without RFID: when the slot a running print draws from reports empty, the manual spool assigned to it is set to 0 g; a removal while the print is paused counts as a filament change.",
-          "empty_on_runout_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}"
+          "empty_on_runout_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
+          "shop_sync": "Reads the colors the Bambu web shop sells today (with a product photo per color and the stock state) once a day, slowly, in the background. Needed for the card's 'Missing colors' mode and for the photos on the share page. Unofficial: the shop has no API, a shop redesign can break this.",
+          "share_page": "Serves a page your friends can open without a Home Assistant account, showing which colors you have in stock. The secret link appears as the 'Share link' sensor on the Bambu Filament Library device; the 'Renew share link' button there invalidates every link handed out so far. Requires Home Assistant to be reachable from the internet.",
+          "share_show_remaining": "Adds the remaining weight and the number of spools to every color on the share page."
         }
       }
     },
@@ -87,7 +93,10 @@
           "empty_on_removal_pct_unavailable": "Also mark as empty when removed with at most this much left (%, 0 = off) (unavailable)",
           "deduct_print_usage": "Deduct print usage from manually created spools",
           "empty_on_runout": "Mark a spool as empty when it is removed while a print was drawing from it",
-          "empty_on_runout_unavailable": "Mark a spool as empty when it is removed while a print was drawing from it (unavailable)"
+          "empty_on_runout_unavailable": "Mark a spool as empty when it is removed while a print was drawing from it (unavailable)",
+          "shop_sync": "Compare with the current Bambu shop range",
+          "share_page": "Public share page (read-only link, no login)",
+          "share_show_remaining": "Show remaining weight on the share page"
         },
         "data_description": {
           "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates.",
@@ -99,7 +108,10 @@
           "empty_on_removal_pct_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
           "deduct_print_usage": "Bambu never books consumption for third-party spools. With this on, every print job finished after enabling is booked once against the manual spool the library shows in that AMS slot, using the per-slot grams the cloud records for the job. RFID spools are never touched; jobs already booked elsewhere are skipped. Cancelled jobs are booked proportionally when the printer integration saw the progress. If the AMS switches to a backup spool mid-print, the job is split between both spools by the print progress at the switch (an estimate; needs the printer integration).",
           "empty_on_runout": "The safe runout rule: a spool that was the active tray of a running or paused print (an AMS backup switch is remembered too) and is then taken out of the AMS before that print ends is set to 0 g. Spools removed after a finished print, or mid-print with more than 20 % left (filament change), are never touched. Spools without RFID: when the slot a running print draws from reports empty, the manual spool assigned to it is set to 0 g; a removal while the print is paused counts as a filament change.",
-          "empty_on_runout_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}"
+          "empty_on_runout_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
+          "shop_sync": "Reads the colors the Bambu web shop sells today (with a product photo per color and the stock state) once a day, slowly, in the background. Needed for the card's 'Missing colors' mode and for the photos on the share page. Unofficial: the shop has no API, a shop redesign can break this.",
+          "share_page": "Serves a page your friends can open without a Home Assistant account, showing which colors you have in stock. The secret link appears as the 'Share link' sensor on the Bambu Filament Library device; the 'Renew share link' button there invalidates every link handed out so far. Requires Home Assistant to be reachable from the internet.",
+          "share_show_remaining": "Adds the remaining weight and the number of spools to every color on the share page."
         }
       }
     }
@@ -132,11 +144,17 @@
       },
       "spool_remaining_g": {
         "name": "Remaining weight"
+      },
+      "share_link": {
+        "name": "Share link"
       }
     },
     "button": {
       "delete_spool": {
         "name": "Delete from Bambu Cloud"
+      },
+      "share_regenerate": {
+        "name": "Renew share link"
       }
     }
   },
@@ -296,6 +314,10 @@
           "description": "The cloud id of the spool to delete."
         }
       }
+    },
+    "get_shop_range": {
+      "name": "Get shop range",
+      "description": "Returns the filament colors the Bambu web shop currently sells (code, product line, product photo, stock state). Empty unless the shop comparison option is on."
     }
   }
 }

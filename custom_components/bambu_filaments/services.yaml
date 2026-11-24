@@ -193,6 +193,9 @@ update_spool:
 get_catalog:
   fields: {}
 
+get_shop_range:
+  fields: {}
+
 delete_spool:
   fields:
     spool_id:
