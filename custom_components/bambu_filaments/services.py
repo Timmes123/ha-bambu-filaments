@@ -15,7 +15,7 @@ from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.util import dt as dt_util
 
 from .api import AuthExpired, BambuCloudError
-from .colors import normalize_hex
+from .colors import compact_hex
 from .const import DOMAIN, SERVICE_REFRESH
 from .coordinator import BambuFilamentsCoordinator
 
@@ -238,7 +238,9 @@ def async_register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError(
                 "create_spool needs material, name and color - or a Bambu color_code"
             )
-        # The create endpoint expects #RRGGBB without alpha (Studio MITM shape);
+        # The create endpoint takes #RRGGBB like Studio; a transparent color
+        # keeps its alpha (#00000000 = Natural support, verified 2026-11-24 -
+        # without it the spool becomes Black);
         # manual entries omit RFID/trayIdName/rolls, and there is no `colors`,
         # `note` or `status` field in the create body.
         payload: dict[str, Any] = {
@@ -246,7 +248,7 @@ def async_register_services(hass: HomeAssistant) -> None:
             "filamentVendor": data["vendor"],
             "filamentType": data["material"],
             "filamentName": data["name"],
-            "color": normalize_hex(data["color"])[:7],
+            "color": compact_hex(data["color"]),
             "colorType": 2,
             "isSupport": False,
             "netWeight": data.get("remaining_g", total),
@@ -354,7 +356,7 @@ def async_register_services(hass: HomeAssistant) -> None:
             if key in call.data
         }
         if "color" in call.data:
-            color = normalize_hex(call.data["color"])[:7]
+            color = compact_hex(call.data["color"])
             # Also rewrite the colors array: the apps (and the card) display
             # `colors` over `color` when present, so updating only `color`
             # would leave the visible swatch unchanged. Verified: PUT accepts

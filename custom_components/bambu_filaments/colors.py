@@ -50,6 +50,16 @@ def normalize_hex(value: str | None) -> str:
     return value
 
 
+def compact_hex(value: str | None) -> str:
+    """#RRGGBB for opaque colors, #RRGGBBAA when the color is (partly)
+    transparent - Bambu's "Natural" support (65102) is #00000000, and cutting
+    the alpha turns it into Black (65103, #000000FF). "" when invalid."""
+    hex8 = normalize_hex(value)
+    if not hex8:
+        return ""
+    return hex8[:7] if hex8.endswith("FF") else hex8
+
+
 def _color_key(colors: list[str]) -> tuple[str, ...]:
     return tuple(sorted(h for h in (normalize_hex(c) for c in colors) if h))
 
@@ -149,7 +159,7 @@ class BambuColorDB:
             # The 5-digit code printed on the box ("13504") identifies product
             # line + color; only usable when the colors are valid hexes.
             code = str(entry.get("fila_color_code") or "").strip()
-            hexes = [h for h in (normalize_hex(c) for c in colors) if h]
+            hexes = [h for h in (compact_hex(c) for c in colors) if h]
             if code and fila_id and len(hexes) == len(colors):
                 by_code.setdefault(
                     code,
@@ -157,7 +167,7 @@ class BambuColorDB:
                         "code": code,
                         "filament_id": fila_id,
                         "product": entry.get("fila_type") or "",
-                        "colors": [h[:7] for h in hexes],
+                        "colors": hexes,
                         "names": record["names"],
                     },
                 )

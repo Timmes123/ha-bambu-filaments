@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.4.2";
+const CARD_VERSION = "2.4.3";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -382,12 +382,24 @@ function locationLabel(s, extLabel) {
   return parts.join(" · ");
 }
 
+// Transparent filament (Natural support is #00000000) would render as an
+// invisible swatch - such colors get a checkerboard behind them.
+const CHECKER = "repeating-conic-gradient(#d9d9d9 0 25%, #fff 0 50%) 0 0 / 10px 10px";
+
+function isClear(hex) {
+  return hex.length === 9 && !hex.endsWith("FF");
+}
+
+function fillCss(colors, layer) {
+  return `background:${layer}${colors.some(isClear) ? `, ${CHECKER}` : ""}`;
+}
+
 function swatchStyle(spool) {
   const colors = (spool.colors && spool.colors.length ? spool.colors : [spool.color])
     .map(normHex).filter(Boolean);
   if (!colors.length) return "background:#888";
-  if (colors.length === 1) return `background:${esc(colors[0])}`;
-  return `background:linear-gradient(135deg, ${esc(colors[0])} 50%, ${esc(colors[1])} 50%)`;
+  if (colors.length === 1) return fillCss(colors, `linear-gradient(${esc(colors[0])}, ${esc(colors[0])})`);
+  return fillCss(colors, `linear-gradient(135deg, ${esc(colors[0])} 50%, ${esc(colors[1])} 50%)`);
 }
 
 class BambuFilamentsCard extends HTMLElement {
@@ -826,8 +838,8 @@ class BambuFilamentsCard extends HTMLElement {
   _missingTile(e, t) {
     const colors = (e.colors || []).map(normHex).filter(Boolean);
     const fill = colors.length > 1
-      ? `background:linear-gradient(135deg, ${colors.map(esc).join(", ")})`
-      : `background:${esc(colors[0] || "#888")}`;
+      ? fillCss(colors, `linear-gradient(135deg, ${colors.map(esc).join(", ")})`)
+      : fillCss(colors, `linear-gradient(${esc(colors[0] || "#888")}, ${esc(colors[0] || "#888")})`);
     // With a photo (option show_images) the tile stays neutral - the photo
     // has its own light background; the color fill only appears if the
     // photo fails to load.
@@ -1380,7 +1392,8 @@ class BambuFilamentsCard extends HTMLElement {
         const cat = hit && (
           catalog.find((f) => f.filament_id === hit.filament_id && f.vendor === "Bambu Lab")
           || catalog.find((f) => f.filament_id === hit.filament_id));
-        const hex = hit ? normHex((hit.colors || [])[0]).slice(0, 7) : "";
+        const full = hit ? normHex((hit.colors || [])[0]) : "";
+        const hex = full.slice(0, 7);
         hint.classList.toggle("bad", !hit || !hex);
         if (!hit || !hex) {
           hint.textContent = t.d_code_unknown;
@@ -1396,7 +1409,7 @@ class BambuFilamentsCard extends HTMLElement {
           root.querySelector("#f-product").value = cat.filament_id;
         }
         root.querySelector("#f-color").value = hex.toLowerCase();
-        hint.innerHTML = `<i style="background:${hex}"></i>${esc(cat ? cat.name : hit.product)}${hit.color_name ? ` · ${esc(hit.color_name)}` : ""}`;
+        hint.innerHTML = `<i style="${fillCss([full], `linear-gradient(${full}, ${full})`)}"></i>${esc(cat ? cat.name : hit.product)}${hit.color_name ? ` · ${esc(hit.color_name)}` : ""}`;
         codeEntry = hit;
       });
       for (const id of ["f-vendor", "f-product", "f-color"]) {

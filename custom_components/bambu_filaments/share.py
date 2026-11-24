@@ -29,7 +29,7 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .colors import normalize_hex
+from .colors import compact_hex
 from .const import DEFAULT_SHARE_REMAINING, DOMAIN, OPT_SHARE_REMAINING, SHARE_URL_BASE
 
 if TYPE_CHECKING:
@@ -113,7 +113,7 @@ def share_tiles(coordinator: BambuFilamentsCoordinator) -> list[dict[str, Any]]:
         if not isinstance(net, (int, float)) or net <= 0:
             continue
         raw = spool.get("colors") or [spool.get("color")]
-        colors = [h[:7] for h in (normalize_hex(c) for c in raw if c) if h]
+        colors = [h for h in (compact_hex(c) for c in raw if c) if h]
         vendor = (spool.get("filamentVendor") or "").strip()
         line = (spool.get("filamentName") or spool.get("filamentType") or "").strip()
         custom = clean_display_name(spool) or ""
@@ -181,15 +181,22 @@ def _fmt_g(grams: int) -> str:
     return f"{grams / 1000:.1f} kg".replace(".0 kg", " kg") if grams >= 1000 else f"{grams} g"
 
 
+_CHECKER = "repeating-conic-gradient(#d9d9d9 0 25%, #fff 0 50%) 0 0 / 12px 12px"
+
+
 def _swatch_html(tile: dict[str, Any]) -> str:
     colors = tile["colors"]
     if len(colors) > 1:
-        stops = ", ".join(colors)
-        style = f"background:linear-gradient(135deg, {stops})"
+        layer = f"linear-gradient(135deg, {', '.join(colors)})"
     elif colors:
-        style = f"background:{colors[0]}"
+        layer = f"linear-gradient({colors[0]}, {colors[0]})"
     else:
-        style = "background:#888"
+        layer = "linear-gradient(#888, #888)"
+    # Transparent filament (Natural support is #00000000): checkerboard
+    # behind the color instead of an invisible tile.
+    style = f"background:{layer}" + (
+        f", {_CHECKER}" if any(len(c) == 9 for c in colors) else ""
+    )
     if not tile["image"]:
         return f'<div class="sw" style="{style}"></div>'
     # With a photo the tile stays neutral (the photo has its own light
