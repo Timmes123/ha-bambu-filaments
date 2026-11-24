@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.3.0";
+const CARD_VERSION = "2.3.1";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -37,6 +37,7 @@ console.info(
 const STR = {
   en: {
     spools: (n) => `${n} spool${n === 1 ? "" : "s"}`,
+    colors: (n) => `${n} color${n === 1 ? "" : "s"}`,
     empty: "No spools found.",
     no_entity: "Bambu Filaments spools sensor not found. Is the integration set up?",
     stale: "Bambu Filaments was updated - reload the page for the new card.",
@@ -144,6 +145,7 @@ const STR = {
   },
   de: {
     spools: (n) => `${n} Spule${n === 1 ? "" : "n"}`,
+    colors: (n) => `${n} Farbe${n === 1 ? "" : "n"}`,
     empty: "Keine Spulen gefunden.",
     no_entity: "Bambu-Filaments-Spulensensor nicht gefunden. Ist die Integration eingerichtet?",
     stale: "Bambu Filaments wurde aktualisiert – Seite neu laden für die neue Karte.",
@@ -568,6 +570,12 @@ class BambuFilamentsCard extends HTMLElement {
     }
     const spools = this._visibleSpools(st);
     const totalG = spools.reduce((a, s) => a + (s.remaining_g || 0), 0);
+    // With combine on, one row can stand for several physical spools: count
+    // the spools inside the stacks, and show the row count as colors.
+    const spoolCount = (items) => items.reduce((a, s) => a + (s._count || 1), 0);
+    const summary = c.combine
+      ? `${t.colors(spools.length)} · ${t.spools(spoolCount(spools))}`
+      : t.spools(spools.length);
     const title = c.title !== undefined ? c.title : t.title;
 
     let body;
@@ -582,7 +590,7 @@ class BambuFilamentsCard extends HTMLElement {
           <div class="ghead" data-group="${esc(gname)}">
             <ha-icon icon="mdi:chevron-${collapsed ? "right" : "down"}"></ha-icon>
             <span class="gname">${esc(gname)}</span>
-            <span class="chip">${items.length}</span>
+            <span class="chip">${spoolCount(items)}</span>
             <span class="gsum">${fmtG(gTotal)}</span>
           </div>`;
         return `<div class="group">${header}${rows}</div>`;
@@ -598,7 +606,7 @@ class BambuFilamentsCard extends HTMLElement {
         ${stale ? `<div class="stale"><span>${esc(t.stale)}</span><button class="stale-btn">${esc(t.reload)}</button></div>` : ""}
         ${title ? `<div class="head">
           <div class="title">${esc(title)}</div>
-          <div class="sum">${t.spools(spools.length)} · ${fmtG(totalG)}</div>
+          <div class="sum">${summary} · ${fmtG(totalG)}</div>
           ${c.show_add ? `<ha-icon class="headadd" icon="mdi:plus" title="${esc(t.add_btn)}" role="button" tabindex="0"></ha-icon>` : ""}
         </div>` : ""}
         <div class="list" ${scroll}>${body}</div>

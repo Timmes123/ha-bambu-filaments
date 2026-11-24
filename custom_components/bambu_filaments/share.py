@@ -234,11 +234,13 @@ def render_share_page(
         )
 
     chips = [f'<button class="chip on" data-f="all">{t["all"]} <span>{len(tiles)}</span></button>']
+    # Categories without any color get no chip at all (an empty, disabled
+    # chip only cost space and wrapped the row on phones).
     for cat in _CATEGORY_ORDER:
-        disabled = "" if counts[cat] else " disabled"
-        chips.append(
-            f'<button class="chip" data-f="{cat}"{disabled}>{t[cat]} <span>{counts[cat]}</span></button>'
-        )
+        if counts[cat]:
+            chips.append(
+                f'<button class="chip" data-f="{cat}">{t[cat]} <span>{counts[cat]}</span></button>'
+            )
     as_of = dt_util.now()
     stamp = as_of.strftime("%d.%m.%Y %H:%M") if t is _STRINGS["de"] else as_of.strftime("%Y-%m-%d %H:%M")
     body = "".join(sections) if tiles else f'<p class="empty">{html.escape(t["empty"])}</p>'
@@ -270,7 +272,6 @@ h1 {{ margin:0; font-size:1.35em; }}
 .chip span {{ color:var(--muted); margin-left:4px; }}
 .chip.on {{ background:var(--accent); border-color:var(--accent); color:#fff; }}
 .chip.on span {{ color:rgba(255,255,255,0.85); }}
-.chip:disabled {{ opacity:0.4; cursor:default; }}
 main {{ padding:4px 16px 32px; max-width:1100px; margin:0 auto; }}
 section {{ margin-top:18px; }}
 h2 {{ font-size:1.05em; margin:0 0 8px; }}
