@@ -1,7 +1,7 @@
 """Official Bambu Lab filament color database.
 
-Maps a spool's filamentId + color hex to the official webshop color name
-(localized) and color code. The database is the public
+Maps a spool's filamentId + color hex (or the tray code from the RFID tag)
+to the official webshop color name (localized) and color code. The database is the public
 `filaments_color_codes.json` from the Bambu Studio repository; it is fetched
 at runtime and cached in HA storage so we do not redistribute it.
 """
@@ -54,6 +54,21 @@ def _color_key(colors: list[str]) -> tuple[str, ...]:
     return tuple(sorted(h for h in (normalize_hex(c) for c in colors) if h))
 
 
+def _tray_key(filament_id: str | None, tray_id_name: str | None) -> tuple[str, str] | None:
+    """(filament id, tray color code) from a trayIdName like "A16-R0".
+
+    The RFID tag of an official spool carries this code. Its prefix is the
+    filament id without "GF"; a prefix that does not match the spool's
+    filament id is ignored rather than trusted.
+    """
+    if not filament_id or not tray_id_name or not isinstance(tray_id_name, str):
+        return None
+    prefix, sep, code = tray_id_name.strip().partition("-")
+    if not sep or not code or prefix.upper() != filament_id[2:].upper():
+        return None
+    return filament_id, code.upper()
+
+
 class BambuColorDB:
     """Lazy-loaded lookup: (filament_id, colors) -> localized name + code."""
 
@@ -63,6 +78,7 @@ class BambuColorDB:
         self._by_id_color: dict[tuple[str, tuple[str, ...]], dict] = {}
         self._by_color: dict[tuple[str, ...], dict] = {}
         self._by_code: dict[str, dict] = {}
+        self._by_tray: dict[tuple[str, str], dict] = {}
 
     async def async_load(self) -> None:
         """Load from cache, refreshing from the public source when stale.
@@ -93,6 +109,7 @@ class BambuColorDB:
             self._by_id_color = {}
             self._by_color = {}
             self._by_code = {}
+            self._by_tray = {}
             return False
 
     async def _fetch(self) -> list[dict] | None:
@@ -112,6 +129,7 @@ class BambuColorDB:
         by_id_color: dict[tuple[str, tuple[str, ...]], dict] = {}
         by_color: dict[tuple[str, ...], dict] = {}
         by_code: dict[str, dict] = {}
+        by_tray: dict[tuple[str, str], dict] = {}
         for entry in entries:
             colors = entry.get("fila_color") or []
             if not colors:
@@ -125,6 +143,8 @@ class BambuColorDB:
             }
             if fila_id := entry.get("fila_id"):
                 by_id_color[(fila_id, key)] = record
+                if tray := str(entry.get("color_code") or "").strip().upper():
+                    by_tray.setdefault((fila_id, tray), record)
             by_color.setdefault(key, record)
             # The 5-digit code printed on the box ("13504") identifies product
             # line + color; only usable when the colors are valid hexes.
@@ -144,6 +164,7 @@ class BambuColorDB:
         self._by_id_color = by_id_color
         self._by_color = by_color
         self._by_code = by_code
+        self._by_tray = by_tray
 
     @staticmethod
     def _localized(names: dict, language: str) -> str | None:
@@ -171,12 +192,31 @@ class BambuColorDB:
         """Every known color code, for the card's create dialog."""
         return [self.by_code(code, language) for code in sorted(self._by_code)]
 
-    def strict_code(self, filament_id: str | None, colors: list[str]) -> str | None:
-        """Color code only for an exact filament + color match (no color-only
-        fallback) - used to decide which shop colors the user owns."""
-        if not filament_id or not colors:
-            return None
-        record = self._by_id_color.get((filament_id, _color_key(colors)))
+    def _exact(
+        self, filament_id: str | None, colors: list[str], tray_id_name: str | None
+    ) -> dict | None:
+        """Database entry for this filament: tray code from the RFID tag
+        first, then filament id + exact colors.
+
+        The tray code wins because some tags carry a hex that differs from
+        the database (every PLA Wood Rosewood tag reads #3F231C, the
+        database and the shop say #4C241C); the code on the tag is the same.
+        """
+        if (key := _tray_key(filament_id, tray_id_name)) and (
+            record := self._by_tray.get(key)
+        ):
+            return record
+        if filament_id and colors:
+            return self._by_id_color.get((filament_id, _color_key(colors)))
+        return None
+
+    def strict_code(
+        self, filament_id: str | None, colors: list[str], tray_id_name: str | None = None
+    ) -> str | None:
+        """Color code only for an exact filament match (tray code or filament
+        + colors, no color-only fallback) - used to decide which shop colors
+        the user owns and which manual spool an AMS spool replaces."""
+        record = self._exact(filament_id, colors, tray_id_name)
         return record.get("code") if record else None
 
     def tray_code(self, filament_id: str | None, colors: list[str]) -> str | None:
@@ -187,17 +227,16 @@ class BambuColorDB:
         return record.get("tray_code") if record else None
 
     def lookup(
-        self, filament_id: str | None, colors: list[str], language: str
+        self,
+        filament_id: str | None,
+        colors: list[str],
+        language: str,
+        tray_id_name: str | None = None,
     ) -> tuple[str | None, str | None]:
         """Return (localized color name, Bambu color code) or (None, None)."""
-        if not colors:
-            return None, None
-        key = _color_key(colors)
-        record = None
-        if filament_id:
-            record = self._by_id_color.get((filament_id, key))
-        if record is None:
-            record = self._by_color.get(key)
+        record = self._exact(filament_id, colors, tray_id_name)
+        if record is None and colors:
+            record = self._by_color.get(_color_key(colors))
         if record is None:
             return None, None
         return self._localized(record["names"], language), record["code"]

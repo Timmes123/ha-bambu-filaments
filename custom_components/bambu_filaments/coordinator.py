@@ -155,7 +155,14 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
     def color_lookup(self, spool: dict[str, Any]) -> tuple[str | None, str | None]:
         """Localized official color name + Bambu color code for a spool."""
         colors = [c for c in (spool.get("colors") or [spool.get("color")]) if c]
-        return self.colordb.lookup(spool.get("filamentId"), colors, self.color_language)
+        return self.colordb.lookup(
+            spool.get("filamentId"), colors, self.color_language, spool.get("trayIdName")
+        )
+
+    def strict_color_code(self, spool: dict[str, Any]) -> str | None:
+        """Bambu color code for an exact match (tray code or filament + colors)."""
+        colors = [c for c in (spool.get("colors") or [spool.get("color")]) if c]
+        return self.colordb.strict_code(spool.get("filamentId"), colors, spool.get("trayIdName"))
 
     async def _async_update_data(self) -> dict[int, dict[str, Any]]:
         try:
@@ -853,14 +860,26 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
                 twin["id"],
             )
 
-    @staticmethod
     def _find_manual_twin(
-        ams_spool: dict[str, Any], data: dict[int, dict[str, Any]]
+        self, ams_spool: dict[str, Any], data: dict[int, dict[str, Any]]
     ) -> dict[str, Any] | None:
-        """A full, manually created spool of the same product and color."""
+        """A full, manually created spool of the same product and color.
+
+        Same color = same hex, or the same Bambu color code: the RFID tag of
+        some official spools carries a hex that differs from the database
+        (PLA Wood Rosewood), so a manual entry created by color code would
+        never match by hex alone.
+        """
 
         def _norm(value: Any) -> str:
             return str(value or "").strip().lower()
+
+        ams_code = self.strict_color_code(ams_spool)
+
+        def _same_color(spool: dict[str, Any]) -> bool:
+            if _hex6(spool.get("color")) == _hex6(ams_spool.get("color")):
+                return True
+            return ams_code is not None and self.strict_color_code(spool) == ams_code
 
         candidates = [
             spool
@@ -868,7 +887,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             if spool.get("createType") == "manual"
             and _norm(spool.get("filamentVendor")) == _norm(ams_spool.get("filamentVendor"))
             and _norm(spool.get("filamentId")) == _norm(ams_spool.get("filamentId"))
-            and _hex6(spool.get("color")) == _hex6(ams_spool.get("color"))
+            and _same_color(spool)
             and isinstance(spool.get("totalNetWeight"), (int, float))
             and (spool.get("totalNetWeight") or 0) > 0
             and (spool.get("netWeight") or 0) >= spool["totalNetWeight"]

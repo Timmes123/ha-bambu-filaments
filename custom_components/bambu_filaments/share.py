@@ -123,7 +123,7 @@ def share_tiles(coordinator: BambuFilamentsCoordinator) -> list[dict[str, Any]]:
             color_name, _ = coordinator.color_lookup(spool)
             code = None
             if vendor == "Bambu Lab":
-                code = coordinator.colordb.strict_code(spool.get("filamentId"), raw)
+                code = coordinator.strict_color_code(spool)
             tile = tiles[key] = {
                 "vendor": vendor,
                 "line": line,
