@@ -212,9 +212,9 @@ The quick actions are meant for corrections and for spools whose usage is not bo
 
 ## Share page
 
-Turn on *Public share page* under *Configure*. The link appears as the **Share link** sensor on the *Bambu Filament Library* device — copy it and send it to friends. They see the colors you have in stock (spools with filament left, identical spools merged into one tile), filterable by PLA, PETG and other materials (support filaments count as other; filters without any color are hidden); with *Show remaining weight* also grams and spool count. Notes, RFIDs and printer names are never shown.
+Turn on *Public share page* under *Configure*. The link appears as the **Share link** sensor on the *Bambu Filament Library* device — copy it and send it to friends. They see the colors you have in stock (spools with filament left, identical spools merged into one tile), filterable by PLA, PETG and other materials (support filaments count as other; filters without any color are hidden); with *Show remaining weight* also grams and spool count. Tap a tile to see the photo or color large. Notes, RFIDs and printer names are never shown.
 
-<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/share-page.png" width="300" alt="Share page on a phone, filtered to PETG">
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/share-page.png" width="300" alt="Share page on a phone">
 
 - Home Assistant must be reachable from the internet (Nabu Casa or your own reverse proxy); the page lives at `/bambu_filaments/share/<secret>`.
 - The secret is long and random; **Renew share link** invalidates every link handed out so far.

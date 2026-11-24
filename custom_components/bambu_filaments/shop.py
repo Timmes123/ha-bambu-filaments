@@ -66,6 +66,7 @@ _SAFE_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%+,-]*(\?[A-Za
 # Bambu's image CDN scales on the fly; the full product photos are 1600 px.
 _CDN_HOST_RE = re.compile(r"^https://[a-z0-9.-]*bblcdn\.[a-z]+/")
 _THUMB_OPS = "__op__resize,m_lfit,w_400__op__format,f_auto__op__quality,q_80"
+_LARGE_OPS = "__op__resize,m_lfit,w_1200__op__format,f_auto__op__quality,q_85"
 
 
 def thumbnail(url: str | None) -> str | None:
@@ -74,6 +75,14 @@ def thumbnail(url: str | None) -> str | None:
         return None
     if _CDN_HOST_RE.match(url) and "__op__" not in url:
         return url + _THUMB_OPS
+    return url
+
+
+def enlarged(url: str | None) -> str | None:
+    """1200 px version of a thumbnail made by `thumbnail` (for the zoom view
+    of the share page); other URLs unchanged."""
+    if url and url.endswith(_THUMB_OPS):
+        return url[: -len(_THUMB_OPS)] + _LARGE_OPS
     return url
 
 

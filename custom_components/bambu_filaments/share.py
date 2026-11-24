@@ -31,6 +31,7 @@ from homeassistant.util import dt as dt_util
 
 from .colors import compact_hex
 from .const import DEFAULT_SHARE_REMAINING, DOMAIN, OPT_SHARE_REMAINING, SHARE_URL_BASE
+from .shop import enlarged
 
 if TYPE_CHECKING:
     from .coordinator import BambuFilamentsCoordinator
@@ -201,10 +202,12 @@ def _swatch_html(tile: dict[str, Any]) -> str:
         return f'<div class="sw" style="{style}"></div>'
     # With a photo the tile stays neutral (the photo has its own light
     # background); the page script swaps in the color fill if it fails.
+    # data-full = the bigger photo for the zoom view.
     return (
         f'<div class="sw" data-fill="{html.escape(style)}">'
-        f'<img src="{html.escape(tile["image"])}" alt="" loading="lazy" '
-        'referrerpolicy="no-referrer"></div>'
+        f'<img src="{html.escape(tile["image"])}" '
+        f'data-full="{html.escape(enlarged(tile["image"]) or tile["image"])}" alt="" '
+        'loading="lazy" referrerpolicy="no-referrer"></div>'
     )
 
 
@@ -234,7 +237,7 @@ def render_share_page(
                 if tile["count"] > 1:
                     meta.append(t["spools"](tile["count"]))
             cards.append(
-                f'<div class="tile" data-cat="{tile["category"]}">'
+                f'<div class="tile" data-cat="{tile["category"]}" tabindex="0" role="button">'
                 f"{_swatch_html(tile)}"
                 f'<div class="name">{html.escape(tile["title"])}</div>'
                 f'<div class="meta">{" · ".join(meta)}</div>'
@@ -276,7 +279,7 @@ body {{ margin:0; background:var(--bg); color:var(--text);
   font:15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
 header {{ position:sticky; top:0; z-index:2; background:var(--bg); padding:16px 16px 10px;
   border-bottom:1px solid var(--line); }}
-.top {{ max-width:1100px; margin:0 auto; }}
+.top {{ max-width:1240px; margin:0 auto; }}
 h1 {{ margin:0; font-size:1.35em; }}
 .sub {{ color:var(--muted); font-size:0.9em; margin-top:2px; }}
 .chips {{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }}
@@ -285,18 +288,29 @@ h1 {{ margin:0; font-size:1.35em; }}
 .chip span {{ color:var(--muted); margin-left:4px; }}
 .chip.on {{ background:var(--accent); border-color:var(--accent); color:#fff; }}
 .chip.on span {{ color:rgba(255,255,255,0.85); }}
-main {{ padding:4px 16px 32px; max-width:1100px; margin:0 auto; }}
+main {{ padding:4px 16px 32px; max-width:1240px; margin:0 auto; }}
 section {{ margin-top:18px; }}
 h2 {{ font-size:1.05em; margin:0 0 8px; }}
-.grid {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:10px; }}
-.tile {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px; min-width:0; }}
+.grid {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; }}
+@media (max-width: 600px) {{ .grid {{ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }} }}
+.tile {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px; min-width:0;
+  cursor:zoom-in; }}
+.tile:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
 .sw {{ position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; border:1px solid var(--line);
   background:#f2f2f2; }}
 .sw img {{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }}
-.name {{ font-weight:600; margin-top:6px; font-size:0.92em; overflow-wrap:anywhere; }}
+.name {{ font-weight:600; margin-top:8px; font-size:0.95em; overflow-wrap:anywhere; }}
 .meta {{ color:var(--muted); font-size:0.8em; }}
 .hide {{ display:none; }}
 .empty {{ color:var(--muted); margin-top:24px; }}
+#zoom {{ position:fixed; inset:0; z-index:10; background:rgba(0,0,0,0.92); display:flex; flex-direction:column;
+  align-items:center; justify-content:center; padding:16px; cursor:zoom-out; }}
+#zoom[hidden] {{ display:none; }}
+#zoom .big {{ position:relative; width:min(92vw, 78vh, 820px); aspect-ratio:1; border-radius:14px;
+  overflow:hidden; background:#f2f2f2; }}
+#zoom .big img {{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }}
+#zoom .cap {{ color:#fff; margin-top:12px; text-align:center; font-weight:600; }}
+#zoom .cap span {{ display:block; font-weight:400; color:rgba(255,255,255,0.75); font-size:0.9em; }}
 </style>
 </head>
 <body>
@@ -306,6 +320,7 @@ h2 {{ font-size:1.05em; margin:0 0 8px; }}
 <div class="chips">{"".join(chips)}</div>
 </div></header>
 <main>{body}</main>
+<div id="zoom" hidden><div class="big"></div><div class="cap"></div></div>
 <script nonce="{nonce}">
 function fill(img) {{
   var box = img.parentElement;
@@ -315,6 +330,48 @@ function fill(img) {{
 document.querySelectorAll(".sw img").forEach(function (img) {{
   if (img.complete && img.naturalWidth === 0) fill(img);
   else img.addEventListener("error", function () {{ fill(img); }});
+}});
+var zoom = document.getElementById("zoom");
+function closeZoom() {{
+  zoom.hidden = true;
+  zoom.querySelector(".big").innerHTML = "";
+}}
+function openZoom(tile) {{
+  var sw = tile.querySelector(".sw");
+  var img = sw.querySelector("img");
+  var big = zoom.querySelector(".big");
+  big.innerHTML = "";
+  big.setAttribute("style", img ? "" : (sw.getAttribute("style") || ""));
+  if (img) {{
+    var el = document.createElement("img");
+    el.alt = "";
+    el.referrerPolicy = "no-referrer";
+    el.addEventListener("error", function () {{
+      if (el.src !== img.src) el.src = img.src;
+      else {{ el.remove(); big.setAttribute("style", sw.dataset.fill || ""); }}
+    }});
+    el.src = img.dataset.full || img.src;
+    big.appendChild(el);
+  }}
+  var cap = zoom.querySelector(".cap");
+  cap.textContent = tile.querySelector(".name").textContent;
+  var meta = tile.querySelector(".meta").textContent;
+  if (meta) {{
+    var sub = document.createElement("span");
+    sub.textContent = meta;
+    cap.appendChild(sub);
+  }}
+  zoom.hidden = false;
+}}
+zoom.addEventListener("click", closeZoom);
+document.addEventListener("keydown", function (ev) {{
+  if (ev.key === "Escape" && !zoom.hidden) closeZoom();
+}});
+document.querySelectorAll(".tile").forEach(function (tile) {{
+  tile.addEventListener("click", function () {{ openZoom(tile); }});
+  tile.addEventListener("keydown", function (ev) {{
+    if (ev.key === "Enter" || ev.key === " ") {{ ev.preventDefault(); openZoom(tile); }}
+  }});
 }});
 document.querySelectorAll(".chip").forEach(function (chip) {{
   chip.addEventListener("click", function () {{
