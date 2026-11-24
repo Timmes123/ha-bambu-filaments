@@ -318,6 +318,16 @@
     "get_shop_range": {
       "name": "Shop-Sortiment abrufen",
       "description": "Liefert die Filamentfarben, die der Bambu-Webshop aktuell verkauft (Code, Sorte, Produktfoto, Lieferstatus). Leer, solange der Shop-Abgleich in den Optionen aus ist."
+    },
+    "refresh_shop": {
+      "name": "Shop-Sortiment aktualisieren",
+      "description": "Liest den Bambu-Webshop jetzt im Hintergrund neu ein. Mit Sorten nur deren Shop-Seiten (etwa 4 Sekunden pro Seite), ohne das ganze Sortiment (etwa 3 Minuten).",
+      "fields": {
+        "products": {
+          "name": "Sorten",
+          "description": "Einzulesende Sorten, z. B. PLA Basic. Leer = alle."
+        }
+      }
     }
   }
 }

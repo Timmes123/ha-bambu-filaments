@@ -193,6 +193,59 @@ class BambuShopRange:
     def shop_url(self) -> str | None:
         return self._data.get("base_url")
 
+    @property
+    def refreshing(self) -> bool:
+        """A shop read (daily or on request) is running right now."""
+        return self._task is not None and not self._task.done()
+
+    def _line(self, code: str, color: dict[str, Any], colordb: Any) -> str:
+        known = colordb.by_code(code, "en") if colordb else None
+        products = self._data.get("products") or {}
+        return (
+            product_line((known or {}).get("product"), products.get(color.get("handle")))
+            or color.get("handle")
+            or "?"
+        )
+
+    def product_fetched(self, colordb: Any) -> dict[str, float]:
+        """{product line: time its shop page was last read} - the full daily
+        read, or a later read of just that line on request."""
+        per_handle = self._data.get("handle_fetched") or {}
+        out: dict[str, float] = {}
+        for code, color in self.colors().items():
+            line = self._line(code, color, colordb)
+            ts = float(per_handle.get(color.get("handle")) or self.fetched_at or 0)
+            out[line] = min(out.get(line, ts), ts)
+        return out
+
+    def async_refresh_now(self, product_lines: list[str], colordb: Any) -> bool:
+        """Read the shop now, on request (card button).
+
+        Only the pages of the given product lines are read (one page every few
+        seconds, about a minute for a dozen lines); no lines, or lines without
+        a known page, means a full read. Returns False when a read is already
+        running.
+        """
+        if self.refreshing:
+            return False
+        wanted = set(product_lines or [])
+        handles = sorted(
+            {
+                color.get("handle")
+                for code, color in self.colors().items()
+                if color.get("handle") and self._line(code, color, colordb) in wanted
+            }
+        )
+        if not wanted or not handles or not self._data.get("base_url"):
+            coro = self._async_refresh()
+        else:
+            coro = self._async_refresh_handles(handles)
+        self._last_attempt = time.time()
+        self._task = self._hass.async_create_background_task(
+            coro, name=f"{DOMAIN} shop range refresh on request"
+        )
+        return True
+
     async def async_load(self) -> None:
         if self._loaded:
             return
@@ -280,6 +333,63 @@ class BambuShopRange:
         except Exception as err:  # noqa: BLE001 - best effort, keep the old snapshot
             _LOGGER.warning("Reading the Bambu shop range failed: %s", err)
 
+    async def _async_refresh_handles(self, handles: list[str]) -> None:
+        """Re-read only these product pages and merge them into the snapshot."""
+        try:
+            base_url = self._data["base_url"]
+            fresh: dict[str, dict[str, Any]] = {}
+            for index, handle in enumerate(handles):
+                if index:
+                    await asyncio.sleep(PAGE_DELAY_S)
+                status, page, _ = await self._async_get(f"{base_url}/products/{handle}")
+                if status == 429:
+                    _LOGGER.info("Bambu shop rate limit hit - keeping what was read so far")
+                    break
+                if status != 200:
+                    continue
+                fresh[handle] = parse_product_page(page, base_url, handle)
+            if not fresh:
+                return
+            now = time.time()
+            data = dict(self._data)
+            colors = {
+                code: color
+                for code, color in (data.get("colors") or {}).items()
+                if color.get("handle") not in fresh
+            }
+            products = dict(data.get("products") or {})
+            swatches = dict(data.get("swatches") or {})
+            photos = dict(data.get("photos") or {})
+            per_handle = dict(data.get("handle_fetched") or {})
+            for handle, parsed in fresh.items():
+                if parsed["name"]:
+                    products[handle] = parsed["name"]
+                per_handle[handle] = now
+                for code, color in parsed["colors"].items():
+                    colors.setdefault(code, {**color, "handle": handle})
+                    if color.get("swatch"):
+                        swatches[code] = color["swatch"]
+                    if color.get("photo"):
+                        photos[code] = color["photo"]
+            data.update(
+                colors=colors,
+                products=products,
+                swatches=swatches,
+                photos=photos,
+                handle_fetched=per_handle,
+            )
+            self._data = data
+            await self._store.async_save(self._data)
+            _LOGGER.info(
+                "Bambu shop range updated on request: %s of %s product pages read",
+                len(fresh),
+                len(handles),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001 - best effort, keep the old snapshot
+            _LOGGER.warning("Reading Bambu shop pages failed: %s", err)
+
     async def _async_refresh_inner(self) -> None:
         status, sitemap, final_url = await self._async_get(
             f"{SHOP_URL}/sitemap_products_1.xml"
@@ -341,6 +451,7 @@ class BambuShopRange:
             "swatches": swatches,
             "photos": photos,
             "non_filament": non_filament,
+            "handle_fetched": {h: now for h in products},
         }
         await self._store.async_save(self._data)
         _LOGGER.info(

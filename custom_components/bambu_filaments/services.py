@@ -27,6 +27,10 @@ SERVICE_CREATE_SPOOL = "create_spool"
 SERVICE_DELETE_SPOOL = "delete_spool"
 SERVICE_GET_CATALOG = "get_catalog"
 SERVICE_GET_SHOP_RANGE = "get_shop_range"
+SERVICE_REFRESH_SHOP = "refresh_shop"
+REFRESH_SHOP_SCHEMA = vol.Schema(
+    {vol.Optional("products", default=[]): vol.All(cv.ensure_list, [cv.string])}
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -415,17 +419,45 @@ def async_register_services(hass: HomeAssistant) -> None:
                 "shop_url": None,
                 "colors": [],
                 "images": {},
+                "refreshing": False,
+                "product_fetched": {},
             }
         fetched = shop.fetched_at
+        iso = lambda ts: dt_util.utc_from_timestamp(ts).isoformat() if ts else None  # noqa: E731
         return {
             "enabled": True,
-            "fetched_at": dt_util.utc_from_timestamp(fetched).isoformat() if fetched else None,
+            "fetched_at": iso(fetched),
             "shop_url": shop.shop_url,
             "colors": shop.range_entries(coordinator.colordb, coordinator.color_language),
             "images": shop.images(),
+            "refreshing": shop.refreshing,
+            "product_fetched": {
+                line: iso(ts) for line, ts in shop.product_fetched(coordinator.colordb).items()
+            },
         }
 
+    async def handle_refresh_shop(call: ServiceCall) -> dict[str, Any]:
+        """Read the Bambu shop now - only the given product lines' pages when
+        lines are given (missing-colors card button). Runs in the background;
+        get_shop_range reports `refreshing` until it is done."""
+        coordinator = _first_coordinator(hass)
+        shop = coordinator.shop
+        if shop is None:
+            raise HomeAssistantError(
+                "The shop comparison is off - turn on 'Compare with the current "
+                "Bambu shop range' in the integration options"
+            )
+        started = shop.async_refresh_now(call.data["products"], coordinator.colordb)
+        return {"started": started, "refreshing": shop.refreshing}
+
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, handle_refresh)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH_SHOP,
+        handle_refresh_shop,
+        REFRESH_SHOP_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_SHOP_RANGE,

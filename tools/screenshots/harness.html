@@ -117,6 +117,8 @@
           shop_url: "https://eu.store.bambulab.com",
           colors: window.__shopColors || SHOP_COLORS,
           images: window.__shopImages || {},
+          refreshing: !!window.__shopRefreshing,
+          product_fetched: window.__productFetched || {},
         } });
       }
       if (service === "get_catalog") {

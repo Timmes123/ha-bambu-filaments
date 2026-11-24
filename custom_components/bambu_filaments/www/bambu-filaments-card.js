@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.4.5";
+const CARD_VERSION = "2.4.6";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -144,6 +144,8 @@ const STR = {
     mi_none: "You have every color of the selected product lines.",
     mi_sold_out: "sold out",
     mi_as_of: "Shop range of",
+    mi_refresh: "Update now",
+    mi_refreshing: "Reading the shop…",
   },
   de: {
     spools: (n) => `${n} Spule${n === 1 ? "" : "n"}`,
@@ -252,6 +254,8 @@ const STR = {
     mi_none: "Du hast alle Farben der ausgewählten Sorten.",
     mi_sold_out: "ausverkauft",
     mi_as_of: "Shop-Sortiment vom",
+    mi_refresh: "Jetzt aktualisieren",
+    mi_refreshing: "Shop wird gelesen…",
   },
 };
 
@@ -694,8 +698,8 @@ class BambuFilamentsCard extends HTMLElement {
 
   // A photo that does not load (blocked, offline, moved) is replaced by the
   // color fill kept in data-fill - also when it failed before this ran.
-  _bindPhotoFallback() {
-    this.shadowRoot.querySelectorAll(".ph img").forEach((img) => {
+  _bindPhotoFallback(root = this.shadowRoot) {
+    root.querySelectorAll(".ph img").forEach((img) => {
       const fallback = () => {
         const box = img.parentElement;
         if (!box) return;
@@ -810,9 +814,20 @@ class BambuFilamentsCard extends HTMLElement {
             </div>${tiles}</div>`;
         }).join("")
         : `<div class="msg">${esc(t.mi_none)}</div>`;
-      const asOf = new Date(this._shop.fetched_at);
+      // As of = the oldest read among this card's product lines (a line
+      // can be newer than the daily read after a refresh on request).
+      const selected = Array.isArray(c.missing_products) ? c.missing_products : [];
+      const perLine = this._shop.product_fetched || {};
+      const stamps = (selected.length ? selected : Object.keys(perLine))
+        .map((p) => perLine[p]).filter(Boolean).map((v) => new Date(v).getTime())
+        .filter((v) => !Number.isNaN(v));
+      const asOf = new Date(stamps.length ? Math.min(...stamps) : this._shop.fetched_at);
+      const busy = !!this._shop.refreshing || !!this._shopRefreshing;
       if (!Number.isNaN(asOf.getTime())) {
-        body += `<div class="asof">${esc(t.mi_as_of)} ${esc(asOf.toLocaleDateString(this._hass?.locale?.language || undefined))}</div>`;
+        const lang = this._hass?.locale?.language || undefined;
+        const when = asOf.toLocaleString(lang, { dateStyle: "medium", timeStyle: "short" });
+        body += `<div class="asof"><span>${esc(busy ? t.mi_refreshing : `${t.mi_as_of} ${when}`)}</span>
+          <button class="mrefresh" ${busy ? "disabled" : ""}><ha-icon icon="mdi:refresh"></ha-icon>${esc(t.mi_refresh)}</button></div>`;
       }
     }
     const scroll = c.max_height ? `style="max-height:${Number(c.max_height)}px;overflow-y:auto"` : "";
@@ -832,7 +847,35 @@ class BambuFilamentsCard extends HTMLElement {
         this._render(st);
       })
     );
+    this.shadowRoot.querySelector(".mrefresh")?.addEventListener("click", () => this._refreshShop());
     this._bindPhotoFallback();
+    // A read is running (started here, by another card or the daily job):
+    // check back until it is done, then show the new range.
+    if (this._shop?.refreshing) this._pollShop();
+  }
+
+  // Button "update now": read only the shop pages of this card's product
+  // lines (all lines when none are selected), then poll until done.
+  _refreshShop() {
+    if (this._shopRefreshing || this._shop?.refreshing) return;
+    const c = this._config;
+    const products = Array.isArray(c.missing_products) ? c.missing_products : [];
+    this._shopRefreshing = true;
+    if (this._lastState) this._render(this._lastState);
+    this._hass.callService("bambu_filaments", "refresh_shop", { products }, undefined, false, true)
+      .catch(() => {})
+      .finally(() => {
+        this._shopRefreshing = false;
+        this._loadShopRange();
+      });
+  }
+
+  _pollShop() {
+    if (this._shopPoll) return;
+    this._shopPoll = setTimeout(() => {
+      this._shopPoll = null;
+      if (this.isConnected) this._loadShopRange();
+    }, 5000);
   }
 
   _missingTile(e, t) {
@@ -914,6 +957,9 @@ class BambuFilamentsCard extends HTMLElement {
         .xhead { display:flex; align-items:center; gap:12px; }
         .swatch { width:42px; height:42px; border-radius:10px; flex:none;
                   border:1px solid var(--divider-color, rgba(255,255,255,.12)); }
+        .swatch.ph { width:96px; height:96px; position:relative; overflow:hidden; background:#f2f2f2; }
+        .swatch.ph img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+                         transform:scale(1.2); }
         .xtitle { font-size:1.1em; font-weight:600; }
         .xsub { color:var(--secondary-text-color, #9aa1ad); font-size:0.88em; }
         .xgrams { display:flex; justify-content:space-between; align-items:baseline; }
@@ -952,7 +998,7 @@ class BambuFilamentsCard extends HTMLElement {
       <div class="overlay">
         <div class="dlg">
           <div class="xhead">
-            <span class="swatch" style="${swatchStyle(spool)}"></span>
+            ${this._swatchHtml(spool, "swatch")}
             <div>
               <div class="xtitle"></div>
               <div class="xsub"></div>
@@ -987,6 +1033,7 @@ class BambuFilamentsCard extends HTMLElement {
     this._dialogHost = host;
     this._details = { root, spoolId: spool.spool_id, chart: null, t };
     this._fillDetails(spool);
+    this._bindPhotoFallback(root);
 
     const close = () => {
       host.remove();
@@ -1746,7 +1793,13 @@ class BambuFilamentsCard extends HTMLElement {
       .mname { font-size:0.85em; font-weight:500; margin-top:4px; overflow-wrap:anywhere; line-height:1.25; }
       .mmeta { font-size:0.75em; color:var(--secondary-text-color); }
       .soldout { color:var(--error-color, #e74c3c); }
-      .asof { font-size:0.75em; color:var(--secondary-text-color); text-align:right; padding:4px 0 2px; }
+      .asof { font-size:0.75em; color:var(--secondary-text-color); display:flex; justify-content:flex-end;
+              align-items:center; gap:10px; flex-wrap:wrap; padding:6px 0 2px; }
+      .mrefresh { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--divider-color);
+                  background:none; color:var(--primary-color); border-radius:14px; padding:3px 10px 3px 6px;
+                  font:inherit; cursor:pointer; }
+      .mrefresh ha-icon { --mdc-icon-size:16px; }
+      .mrefresh:disabled { color:var(--secondary-text-color); cursor:default; opacity:.6; }
     </style>`;
   }
 }

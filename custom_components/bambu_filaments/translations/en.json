@@ -318,6 +318,16 @@
     "get_shop_range": {
       "name": "Get shop range",
       "description": "Returns the filament colors the Bambu web shop currently sells (code, product line, product photo, stock state). Empty unless the shop comparison option is on."
+    },
+    "refresh_shop": {
+      "name": "Refresh shop range",
+      "description": "Reads the Bambu web shop now, in the background. With product lines given, only their shop pages are read (about 4 seconds per page); without, the whole range (about 3 minutes).",
+      "fields": {
+        "products": {
+          "name": "Product lines",
+          "description": "Product lines to read, e.g. PLA Basic. Empty = all."
+        }
+      }
     }
   }
 }

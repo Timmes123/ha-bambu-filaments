@@ -196,6 +196,15 @@ get_catalog:
 get_shop_range:
   fields: {}
 
+refresh_shop:
+  fields:
+    products:
+      required: false
+      example: '["PLA Basic", "PLA Matte"]'
+      selector:
+        text:
+          multiple: true
+
 delete_spool:
   fields:
     spool_id:

@@ -92,6 +92,7 @@ Shown on the **Features** step during setup and behind *Configure*: polling inte
 | `bambu_filaments.delete_spool` | `spool_id` | Delete from the cloud library |
 | `bambu_filaments.get_catalog` | – | Vendor/product combinations the cloud accepts, plus your own slicer presets as `presets` (response data) |
 | `bambu_filaments.get_shop_range` | – | Colors the Bambu shop currently sells: code, product line, hex, stock state, shop link, plus a product photo per color code (response data; needs the shop comparison option) |
+| `bambu_filaments.refresh_shop` | `products` (optional) | Reads the Bambu shop now, in the background: only the pages of the given product lines (about 4 s per page), or the whole range without (about 3 min) |
 
 `spool_id` is the cloud id, shown as attribute on every spool sensor. Write actions are **admin-only** — they change your Bambu account.
 
@@ -130,7 +131,7 @@ compact: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
 
-**Tiles and shop photos** — `layout: tiles` shows a grid instead of rows (tap works the same: details, stacks expand, cog on the tile). `show_images: true` replaces the color square of Bambu colors with the product photo from the Bambu shop (needs the *Compare with the current Bambu shop range* option; works in both layouts and in `mode: missing`, other brands keep their color square):
+**Tiles and shop photos** — `layout: tiles` shows a grid instead of rows (tap works the same: details, stacks expand, cog on the tile). `show_images: true` replaces the color square of Bambu colors with the product photo from the Bambu shop (needs the *Compare with the current Bambu shop range* option; works in both layouts, in the details view and in `mode: missing`, other brands keep their color square):
 
 ```yaml
 type: custom:bambu-filaments-card
@@ -144,7 +145,7 @@ materials: [PLA]
 
 The screenshots use color fills; with `show_images` the tiles show Bambu's product photos, loaded straight from Bambu's image server.
 
-**Missing colors** — `mode: missing` lists the colors of the current Bambu shop range you don't own (needs the *Compare with the current Bambu shop range* option). Tap a tile to open it in the shop:
+**Missing colors** — `mode: missing` lists the colors of the current Bambu shop range you don't own (needs the *Compare with the current Bambu shop range* option). Tap a tile to open it in the shop. The footer shows when the shop was read; *Update now* re-reads just the card's product lines:
 
 ```yaml
 type: custom:bambu-filaments-card
