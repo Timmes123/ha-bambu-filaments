@@ -398,7 +398,8 @@ def async_register_services(hass: HomeAssistant) -> None:
         return {"filaments": filaments, "presets": presets, "colors": colors}
 
     async def handle_get_shop_range(call: ServiceCall) -> dict[str, Any]:
-        """Colors the Bambu shop sells right now (for the missing-colors card).
+        """Colors the Bambu shop sells right now (for the missing-colors card),
+        plus a photo per color code (for cards with shop photos on).
 
         Ownership is computed by the card from the live spool list, so this
         response only changes when the daily shop snapshot does.
@@ -406,13 +407,20 @@ def async_register_services(hass: HomeAssistant) -> None:
         coordinator = _first_coordinator(hass)
         shop = coordinator.shop
         if shop is None:
-            return {"enabled": False, "fetched_at": None, "shop_url": None, "colors": []}
+            return {
+                "enabled": False,
+                "fetched_at": None,
+                "shop_url": None,
+                "colors": [],
+                "images": {},
+            }
         fetched = shop.fetched_at
         return {
             "enabled": True,
             "fetched_at": dt_util.utc_from_timestamp(fetched).isoformat() if fetched else None,
             "shop_url": shop.shop_url,
             "colors": shop.range_entries(coordinator.colordb, coordinator.color_language),
+            "images": shop.images(),
         }
 
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, handle_refresh)

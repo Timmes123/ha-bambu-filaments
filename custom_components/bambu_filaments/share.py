@@ -87,8 +87,14 @@ class ShareLink:
 _CATEGORY_ORDER = ("pla", "petg", "other")
 
 
-def _category(material: str) -> str:
+def _category(material: str, line: str = "") -> str:
+    # Support filaments carry the material they support ("PLA" for Support
+    # For PLA/PETG, "PLA-S" for Support For PLA) but belong under Other.
+    if "SUPPORT" in (line or "").upper():
+        return "other"
     material = (material or "").upper()
+    if material.endswith("-S"):
+        return "other"
     if material.startswith("PLA"):
         return "pla"
     if material.startswith("PETG"):
@@ -125,7 +131,7 @@ def share_tiles(coordinator: BambuFilamentsCoordinator) -> list[dict[str, Any]]:
                 "code": code,
                 "colors": colors,
                 "image": shop.image(code) if shop and code else None,
-                "category": _category(spool.get("filamentType") or line),
+                "category": _category(spool.get("filamentType") or line, line),
                 "count": 0,
                 "remaining_g": 0,
             }

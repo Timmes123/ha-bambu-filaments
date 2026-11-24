@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.3.1";
+const CARD_VERSION = "2.4.0";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -123,6 +123,8 @@ const STR = {
     x_close: "Close",
     e_show_add: "Show add-spool button",
     e_compact: "Compact rows",
+    e_layout: "Layout", l_list: "List", l_tiles: "Tiles",
+    e_show_images: "Shop photos instead of color swatches (Bambu colors, needs the shop sync)",
     e_low: "Red below (%)",
     e_warn: "Orange below (%)",
     e_max_height: "Max. height (px, empty = unlimited)",
@@ -230,6 +232,8 @@ const STR = {
     x_close: "Schließen",
     e_show_add: "Neue-Spule-Button anzeigen",
     e_compact: "Kompakte Zeilen",
+    e_layout: "Ansicht", l_list: "Liste", l_tiles: "Kacheln",
+    e_show_images: "Shop-Fotos statt Farbfeld (Bambu-Farben, braucht den Shop-Abgleich)",
     e_low: "Rot unter (%)",
     e_warn: "Orange unter (%)",
     e_max_height: "Max. Höhe (px, leer = unbegrenzt)",
@@ -253,6 +257,8 @@ const STR = {
 
 const DEFAULTS = {
   mode: "spools",
+  layout: "list",
+  show_images: false,
   missing_count_empty: true,
   group_by: "line",
   sort: "name",
@@ -577,6 +583,9 @@ class BambuFilamentsCard extends HTMLElement {
       ? `${t.colors(spools.length)} · ${t.spools(spoolCount(spools))}`
       : t.spools(spools.length);
     const title = c.title !== undefined ? c.title : t.title;
+    // Shop photos need the shop snapshot (photo per color code).
+    if (c.show_images) this._ensureShopRange();
+    const tiles = c.layout === "tiles";
 
     let body;
     if (!spools.length) {
@@ -585,7 +594,9 @@ class BambuFilamentsCard extends HTMLElement {
       body = this._groups(spools).map(([gname, items]) => {
         const gTotal = items.reduce((a, s) => a + (s.remaining_g || 0), 0);
         const collapsed = gname && this._collapsed.has(gname);
-        const rows = collapsed ? "" : items.map((s) => this._stack(s, t)).join("");
+        const inner = items.map((s) => this._stack(s, t)).join("");
+        const rows = collapsed ? ""
+          : tiles ? `<div class="tgrid ${c.compact ? "compact" : ""}">${inner}</div>` : inner;
         const header = gname === null ? "" : `
           <div class="ghead" data-group="${esc(gname)}">
             <ha-icon icon="mdi:chevron-${collapsed ? "right" : "down"}"></ha-icon>
@@ -630,7 +641,7 @@ class BambuFilamentsCard extends HTMLElement {
     );
     // A combined ×n row expands/collapses its individual spools on click
     // (single rows open the details dialog, editing goes through the cog icon).
-    this.shadowRoot.querySelectorAll(".row[data-key]").forEach((el) =>
+    this.shadowRoot.querySelectorAll(".item[data-key]").forEach((el) =>
       el.addEventListener("click", () => {
         const k = el.dataset.key;
         this._expandedStacks.has(k)
@@ -659,13 +670,48 @@ class BambuFilamentsCard extends HTMLElement {
       })
     );
     if (c.show_details) {
-      this.shadowRoot.querySelectorAll(".row.tap").forEach((el) =>
+      this.shadowRoot.querySelectorAll(".item.tap").forEach((el) =>
         el.addEventListener("click", () => {
           const spool = findSpool(Number(el.dataset.spool));
           if (spool) this._openDetails(t, spool);
         })
       );
     }
+    this._bindPhotoFallback();
+  }
+
+  // A photo that does not load (blocked, offline, moved) is replaced by the
+  // color fill kept in data-fill - also when it failed before this ran.
+  _bindPhotoFallback() {
+    this.shadowRoot.querySelectorAll(".ph img").forEach((img) => {
+      const fallback = () => {
+        const box = img.parentElement;
+        if (!box) return;
+        box.setAttribute("style", box.dataset.fill || "");
+        box.classList.remove("ph");
+        img.remove();
+      };
+      if (img.complete && img.naturalWidth === 0) fallback();
+      else img.addEventListener("error", fallback);
+    });
+  }
+
+  // Product photo of a spool's color (Bambu Lab spools with a known color
+  // code, card option show_images, shop sync on) - null otherwise.
+  _photoFor(s) {
+    if (!this._config.show_images || s.vendor !== "Bambu Lab" || !s.bambu_color_code) return null;
+    const url = this._shop?.images?.[String(s.bambu_color_code)];
+    return safeUrl(url) ? url : null;
+  }
+
+  // The color square of a row / tile: the photo on a neutral background
+  // (data-fill keeps the color for the load-error fallback) or the color.
+  _swatchHtml(s, cls) {
+    const fill = swatchStyle(s);
+    const photo = this._photoFor(s);
+    return photo
+      ? `<span class="${cls} ph" data-fill="${fill}"><img src="${esc(photo)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`
+      : `<span class="${cls}" style="${fill}"></span>`;
   }
 
   // ---------------------------------------------------------- missing colors
@@ -673,6 +719,11 @@ class BambuFilamentsCard extends HTMLElement {
   // The shop range only changes once a day - fetched once per card and
   // re-fetched after SHOP_MAX_AGE_MS; ownership is recomputed from the live
   // spool list on every render.
+  _ensureShopRange() {
+    const stale = this._shopAt && Date.now() - this._shopAt > SHOP_MAX_AGE_MS;
+    if ((!this._shop && !this._shopError) || stale) this._loadShopRange();
+  }
+
   _loadShopRange() {
     if (this._shopLoading) return;
     this._shopLoading = true;
@@ -716,8 +767,7 @@ class BambuFilamentsCard extends HTMLElement {
   _renderMissing(st, t) {
     const c = this._config;
     this._lastState = st;
-    const stale = this._shopAt && Date.now() - this._shopAt > SHOP_MAX_AGE_MS;
-    if ((!this._shop && !this._shopError) || stale) this._loadShopRange();
+    this._ensureShopRange();
     const title = c.title !== undefined ? c.title : t.mi_title;
     let body;
     let sum = "";
@@ -770,14 +820,7 @@ class BambuFilamentsCard extends HTMLElement {
         this._render(st);
       })
     );
-    // A photo that fails to load is replaced by the color fill.
-    this.shadowRoot.querySelectorAll(".msw img").forEach((img) =>
-      img.addEventListener("error", () => {
-        const box = img.parentElement;
-        box.setAttribute("style", box.dataset.fill || "");
-        img.remove();
-      })
-    );
+    this._bindPhotoFallback();
   }
 
   _missingTile(e, t) {
@@ -785,13 +828,14 @@ class BambuFilamentsCard extends HTMLElement {
     const fill = colors.length > 1
       ? `background:linear-gradient(135deg, ${colors.map(esc).join(", ")})`
       : `background:${esc(colors[0] || "#888")}`;
-    // With a photo the tile stays neutral (the photo has its own light
-    // background); the color fill only appears if the photo fails to load.
-    const photo = safeUrl(e.image);
+    // With a photo (option show_images) the tile stays neutral - the photo
+    // has its own light background; the color fill only appears if the
+    // photo fails to load.
+    const photo = this._config.show_images && safeUrl(e.image) ? e.image : null;
     const img = photo
-      ? `<img src="${esc(e.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "";
+      ? `<img src="${esc(photo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "";
     const inner = `
-      <div class="msw" ${photo ? `data-fill="${fill}"` : `style="${fill}"`}>${img}</div>
+      <div class="msw ${photo ? "ph" : ""}" ${photo ? `data-fill="${fill}"` : `style="${fill}"`}>${img}</div>
       <div class="mname">${esc(e.name)}</div>
       <div class="mmeta">${esc(e.code)}${e.available ? "" : ` · <span class="soldout">${esc(t.mi_sold_out)}</span>`}</div>`;
     return safeUrl(e.url)
@@ -1485,19 +1529,23 @@ class BambuFilamentsCard extends HTMLElement {
   _stack(s, t) {
     // A combined row plus, when expanded, one child row per physical spool
     // (emptiest first) - each with its own cog icon.
+    // In the tile layout the children follow the stack tile in the same grid.
+    const item = this._config.layout === "tiles" ? this._tile.bind(this) : this._row.bind(this);
     const expanded = (s._count || 1) > 1 && this._expandedStacks.has(s._key);
-    let html = this._row(s, t, { expanded });
+    let html = item(s, t, { expanded });
     if (expanded) {
       html += s._spools
         .slice()
         .sort((a, b) => (a.remaining_g ?? 0) - (b.remaining_g ?? 0))
-        .map((child) => this._row(child, t, { child: true }))
+        .map((child) => item(child, t, { child: true }))
         .join("");
     }
     return html;
   }
 
-  _row(s, t, opts = {}) {
+  // Everything a row and a tile share: fill level, title, meta parts,
+  // edit icon and the ×n chip of a combined stack.
+  _itemData(s, t, opts) {
     const c = this._config;
     const pct = s.total_g ? Math.max(0, Math.min(100, Math.round((s.remaining_g ?? 0) / s.total_g * 100))) : 0;
     const barColor = (s.remaining_g ?? 0) <= 0 ? "var(--disabled-text-color, #9e9e9e)"
@@ -1553,10 +1601,17 @@ class BambuFilamentsCard extends HTMLElement {
     const stackChip = combined
       ? ` <span class="chip">×${s._count}</span><ha-icon class="schev" icon="mdi:chevron-${opts.expanded ? "up" : "down"}"></ha-icon>`
       : "";
+    const attrs = `${combined ? `data-key="${esc(s._key)}"` : ""} data-spool="${combined ? "" : s.spool_id}"`;
+    const cls = `item ${opts.child ? "child" : ""} ${opts.expanded ? "open" : ""} ${c.show_details && !combined ? "tap" : ""}`;
+    return { pct, barColor, titleLine, meta, edit, stackChip, attrs, cls };
+  }
+
+  _row(s, t, opts = {}) {
+    const c = this._config;
+    const { pct, barColor, titleLine, meta, edit, stackChip, attrs, cls } = this._itemData(s, t, opts);
     return `
-      <div class="row ${c.compact ? "compact" : ""} ${opts.child ? "child" : ""} ${c.show_details && !combined ? "tap" : ""}"
-           ${combined ? `data-key="${esc(s._key)}"` : ""} data-spool="${combined ? "" : s.spool_id}">
-        <span class="swatch" style="${swatchStyle(s)}"></span>
+      <div class="row ${cls} ${c.compact ? "compact" : ""} ${this._photoFor(s) ? "withph" : ""}" ${attrs}>
+        ${this._swatchHtml(s, "swatch")}
         <div class="mid">
           <div class="rname">${esc(titleLine)}${stackChip}</div>
           ${meta.length && !c.compact ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
@@ -1567,6 +1622,21 @@ class BambuFilamentsCard extends HTMLElement {
           <div class="pct">${pct}%</div>
         </div>
         ${edit}
+      </div>`;
+  }
+
+  // Tile layout: big swatch/photo, title, meta line, bar and grams. The cog
+  // sits on the swatch; tapping works like a row (details / expand stack).
+  _tile(s, t, opts = {}) {
+    const c = this._config;
+    const { pct, barColor, titleLine, meta, edit, stackChip, attrs, cls } = this._itemData(s, t, opts);
+    return `
+      <div class="tile ${cls}" ${attrs}>
+        <div class="tswwrap">${this._swatchHtml(s, "tsw")}${edit}</div>
+        <div class="tname">${esc(titleLine)}${stackChip}</div>
+        ${meta.length && !c.compact ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
+        <div class="barbg"><div class="bar" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="tgrams"><span><b>${fmtG(s.remaining_g)}</b> / ${fmtG(s.total_g)}</span><span>${pct}%</span></div>
       </div>`;
   }
 
@@ -1605,6 +1675,33 @@ class BambuFilamentsCard extends HTMLElement {
       .swatch { width:34px; height:34px; border-radius:8px; flex:none;
                 border:1px solid var(--divider-color); }
       .compact .swatch { width:22px; height:22px; border-radius:6px; }
+      /* Shop photos: a bit larger than the color square, neutral background
+         (the product photos have a light backdrop of their own). */
+      .ph { position:relative; overflow:hidden; background:#f2f2f2; }
+      .ph img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+      .row.withph .swatch { width:46px; height:46px; }
+      .row .ph img { transform:scale(1.35); }
+      .row.withph.child .swatch { width:34px; height:34px; }
+      .row.withph.compact .swatch { width:30px; height:30px; }
+      .tgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:8px;
+               padding:8px 0 6px; }
+      .tgrid.compact { grid-template-columns:repeat(auto-fill, minmax(88px, 1fr)); gap:6px; }
+      .tile { min-width:0; border-radius:10px; padding:6px; border:1px solid var(--divider-color); }
+      .tile[data-key], .tile.tap { cursor:pointer; }
+      .tile[data-key]:hover, .tile.tap:hover { border-color:var(--secondary-text-color); }
+      .tile.open { border-color:var(--primary-color); }
+      .tile.child { border-style:dashed; }
+      .tswwrap { position:relative; }
+      .tsw { display:block; aspect-ratio:1; border-radius:7px; border:1px solid var(--divider-color); }
+      .tswwrap .edit { position:absolute; top:4px; right:4px; padding:3px; border-radius:50%;
+                       --mdc-icon-size:18px; color:var(--primary-text-color);
+                       background:color-mix(in srgb, var(--card-background-color, #fff) 80%, transparent); }
+      .tname { font-size:0.9em; font-weight:500; margin-top:5px; line-height:1.25; overflow-wrap:anywhere; }
+      .tname .chip { white-space:nowrap; }
+      .tile .meta { font-size:0.75em; }
+      .tgrams { font-size:0.78em; color:var(--secondary-text-color); margin-top:3px; display:flex;
+                flex-wrap:wrap; justify-content:space-between; column-gap:6px; white-space:nowrap; }
+      .tgrams b { color:var(--primary-text-color); font-weight:600; }
       .mid { flex:1; min-width:0; }
       .rname { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .meta { color:var(--secondary-text-color); font-size:0.82em; white-space:nowrap;
@@ -1632,8 +1729,7 @@ class BambuFilamentsCard extends HTMLElement {
                padding:6px; border:1px solid var(--divider-color); }
       a.mtile:hover { border-color:var(--secondary-text-color); }
       .msw { position:relative; aspect-ratio:1; border-radius:7px; overflow:hidden;
-             border:1px solid var(--divider-color); background:#f2f2f2; }
-      .msw img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+             border:1px solid var(--divider-color); }
       .mname { font-size:0.85em; font-weight:500; margin-top:4px; overflow-wrap:anywhere; line-height:1.25; }
       .mmeta { font-size:0.75em; color:var(--secondary-text-color); }
       .soldout { color:var(--error-color, #e74c3c); }
@@ -1725,6 +1821,7 @@ class BambuFilamentsCardEditor extends HTMLElement {
       return `
         <div class="sect">${t.e_missing}</div>
         ${check("missing_count_empty", t.e_missing_empty)}
+        ${check("show_images", t.e_show_images)}
         <div class="lhead"><span>${t.e_missing_products}</span></div>
         ${values.length ? `<div class="mats">${values.map((v) => `
           <label class="chk"><input type="checkbox" data-list="missing_products" data-val="${esc(v)}" ${selected.includes(v) ? "checked" : ""}/> ${esc(v)}</label>`).join("")}</div>`
@@ -1757,6 +1854,12 @@ class BambuFilamentsCardEditor extends HTMLElement {
         <label>${t.e_entity}<input type="text" data-f="entity" value="${esc(c.entity || "")}"/></label>
         <label>${t.e_title}<input type="text" data-f="title" value="${esc(c.title !== undefined ? c.title : missingMode ? t.mi_title : t.title)}"/></label>
         ${missingMode ? missingSection() : `
+        <label>${t.e_layout}
+          <select data-f="layout">
+            <option value="list" ${c.layout === "tiles" ? "" : "selected"}>${t.l_list}</option>
+            <option value="tiles" ${c.layout === "tiles" ? "selected" : ""}>${t.l_tiles}</option>
+          </select></label>
+        ${check("show_images", t.e_show_images)}
         <div class="cols">
           <label>${t.e_group}
             <select data-f="group_by">

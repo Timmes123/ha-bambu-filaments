@@ -91,7 +91,7 @@ Shown on the **Features** step during setup and behind *Configure*: polling inte
 | `bambu_filaments.create_spool` | `color_code` **or** `vendor`, `material`, `name`, `color`; plus `total_g`, `remaining_g`, `filament_id`, `display_name`, `note`, `count` | Add spool(s); `color_code` = 5-digit code on the Bambu box (fills everything else), `filament_id: ""` for third-party brands, `count` 1–50 |
 | `bambu_filaments.delete_spool` | `spool_id` | Delete from the cloud library |
 | `bambu_filaments.get_catalog` | – | Vendor/product combinations the cloud accepts, plus your own slicer presets as `presets` (response data) |
-| `bambu_filaments.get_shop_range` | – | Colors the Bambu shop currently sells: code, product line, hex, stock state, shop link (response data; needs the shop comparison option) |
+| `bambu_filaments.get_shop_range` | – | Colors the Bambu shop currently sells: code, product line, hex, stock state, shop link, plus a product photo per color code (response data; needs the shop comparison option) |
 
 `spool_id` is the cloud id, shown as attribute on every spool sensor. Write actions are **admin-only** — they change your Bambu account.
 
@@ -130,6 +130,20 @@ compact: true
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-loaded.png" width="400" alt="Card filtered to spools loaded in a printer">
 
+**Tiles and shop photos** — `layout: tiles` shows a grid instead of rows (tap works the same: details, stacks expand, cog on the tile). `show_images: true` replaces the color square of Bambu colors with the product photo from the Bambu shop (needs the *Compare with the current Bambu shop range* option; works in both layouts and in `mode: missing`, other brands keep their color square):
+
+```yaml
+type: custom:bambu-filaments-card
+layout: tiles
+show_images: true
+combine: true
+materials: [PLA]
+```
+
+<img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/card-tiles.png" width="400" alt="Card in tile layout, PLA spools grouped by product line">
+
+The screenshots use color fills; with `show_images` the tiles show Bambu's product photos, loaded straight from Bambu's image server.
+
 **Missing colors** — `mode: missing` lists the colors of the current Bambu shop range you don't own (needs the *Compare with the current Bambu shop range* option). Tap a tile to open it in the shop:
 
 ```yaml
@@ -155,6 +169,8 @@ Everything is configurable in the visual editor.
 | Option | Default | Description |
 |---|---|---|
 | `mode` | `spools` | `spools` (your library) or `missing` (current shop colors you don't own) |
+| `layout` | `list` | `list` (rows) or `tiles` (grid) |
+| `show_images` | `false` | Bambu shop product photo instead of the color square (Bambu colors with a known color code; needs the shop comparison option) |
 | `entity` | auto | The aggregate spools sensor |
 | `title` | "Filament" | Card title ("" hides the header) |
 | `group_by` | `line` | `line` (brand + product), `product` (product across brands), `material`, `none` |
@@ -196,7 +212,7 @@ The quick actions are meant for corrections and for spools whose usage is not bo
 
 ## Share page
 
-Turn on *Public share page* under *Configure*. The link appears as the **Share link** sensor on the *Bambu Filament Library* device — copy it and send it to friends. They see the colors you have in stock (spools with filament left, identical spools merged into one tile), filterable by PLA, PETG and other materials; with *Show remaining weight* also grams and spool count. Notes, RFIDs and printer names are never shown.
+Turn on *Public share page* under *Configure*. The link appears as the **Share link** sensor on the *Bambu Filament Library* device — copy it and send it to friends. They see the colors you have in stock (spools with filament left, identical spools merged into one tile), filterable by PLA, PETG and other materials (support filaments count as other; filters without any color are hidden); with *Show remaining weight* also grams and spool count. Notes, RFIDs and printer names are never shown.
 
 <img src="https://raw.githubusercontent.com/Timmes123/ha-bambu-filaments/main/images/share-page.png" width="300" alt="Share page on a phone, filtered to PETG">
 

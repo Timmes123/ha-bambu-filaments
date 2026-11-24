@@ -218,6 +218,12 @@ class BambuShopRange:
         photo = (self._data.get("photos") or {}).get(str(code))
         return thumbnail(photo) or (self._data.get("swatches") or {}).get(str(code))
 
+    def images(self) -> dict[str, str]:
+        """{code: product photo (else swatch)} for every color seen so far -
+        the cards use it to show photos of spools, retired colors included."""
+        codes = set(self._data.get("photos") or {}) | set(self._data.get("swatches") or {})
+        return {code: url for code in sorted(codes) if (url := self.image(code))}
+
     def async_schedule_refresh(self) -> None:
         """Start a background refresh when the snapshot is stale."""
         if self._task is not None and not self._task.done():

@@ -116,6 +116,7 @@
           enabled: true, fetched_at: "2026-11-24T06:00:00+00:00",
           shop_url: "https://eu.store.bambulab.com",
           colors: window.__shopColors || SHOP_COLORS,
+          images: window.__shopImages || {},
         } });
       }
       if (service === "get_catalog") {
@@ -147,6 +148,8 @@
       max_remaining_g: 500, compact: true, show_add: false } },
     { id: "loaded", cls: "shot", config: {
       title: "Loaded right now", group_by: "none", only_in_printer: true, show_type: true, show_add: false } },
+    { id: "tiles", cls: "shot", config: {
+      title: "PLA", layout: "tiles", combine: true, materials: ["PLA"], show_add: false } },
     { id: "missing", cls: "shot", config: {
       mode: "missing", missing_products: ["PETG Basic", "PETG Matte"] } },
   ];
