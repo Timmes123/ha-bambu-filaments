@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.4.6";
+const CARD_VERSION = "2.4.7";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -111,6 +111,8 @@ const STR = {
     x_profile: "Slicer profile",
     x_type: "Type",
     x_note: "Note",
+    x_shop: "Shop",
+    x_shop_open: "View in the Bambu shop",
     x_history: (d) => `Remaining weight, last ${d} days`,
     x_no_history: "No history: the spool's remaining-weight sensor was not found.",
     x_edit: "Edit",
@@ -222,6 +224,8 @@ const STR = {
     x_profile: "Slicer-Profil",
     x_type: "Typ",
     x_note: "Notiz",
+    x_shop: "Shop",
+    x_shop_open: "Im Bambu-Shop ansehen",
     x_history: (d) => `Restgewicht der letzten ${d} Tage`,
     x_no_history: "Kein Verlauf: Der Restgewicht-Sensor dieser Spule wurde nicht gefunden.",
     x_edit: "Bearbeiten",
@@ -757,6 +761,7 @@ class BambuFilamentsCard extends HTMLElement {
         if (this._lastState) {
           this._configDirty = true;
           this._render(this._lastState);
+          this._refreshDetails(this._lastState);
         }
       });
   }
@@ -971,6 +976,8 @@ class BambuFilamentsCard extends HTMLElement {
         dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0; font-size:0.9em; }
         dt { color:var(--secondary-text-color, #9aa1ad); }
         dd { margin:0; overflow-wrap:anywhere; }
+        dd a { color:var(--primary-color, #03a9f4); text-decoration:none; }
+        dd a:hover { text-decoration:underline; }
         .xhist-title { font-size:0.85em; color:var(--secondary-text-color, #9aa1ad); }
         .xhist { min-height:40px; --ha-card-border-width:0; --ha-card-box-shadow:none;
                  --ha-card-background:transparent; margin:0 -16px; }
@@ -1034,14 +1041,23 @@ class BambuFilamentsCard extends HTMLElement {
     this._details = { root, spoolId: spool.spool_id, chart: null, t };
     this._fillDetails(spool);
     this._bindPhotoFallback(root);
+    if (spool.vendor === "Bambu Lab" && spool.bambu_color_code) this._ensureShopRange();
 
     const close = () => {
       host.remove();
       this._dialogHost = null;
       this._details = null;
     };
-    // Like the edit dialog: no click-outside-to-close (text selection would
-    // release over the overlay and close it by accident).
+    // A click next to the dialog closes it - but only when the press also
+    // started there: a text selection dragged out of the dialog releases over
+    // the overlay and must not close it.
+    const overlay = root.querySelector(".overlay");
+    let downOutside = false;
+    overlay.addEventListener("pointerdown", (ev) => { downOutside = ev.target === overlay; });
+    overlay.addEventListener("click", (ev) => {
+      if (downOutside && ev.target === overlay) close();
+      downOutside = false;
+    });
     root.querySelector(".dlg-close").addEventListener("click", close);
     root.querySelector(".dlg-edit")?.addEventListener("click", () => {
       const current = (this._lastState?.attributes?.spools || [])
@@ -1152,8 +1168,20 @@ class BambuFilamentsCard extends HTMLElement {
       [t.x_note, spool.note],
       ["ID", String(spool.spool_id)],
     ].filter(([, v]) => v);
+    const shopUrl = this._shopUrlFor(spool);
     root.querySelector(".xinfo").innerHTML = rows
-      .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+      .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")
+      + (shopUrl ? `<dt>${esc(t.x_shop)}</dt><dd><a href="${esc(shopUrl)}" target="_blank" rel="noopener noreferrer">${esc(t.x_shop_open)}</a></dd>` : "");
+  }
+
+  // Shop page of a Bambu spool's color - only colors the shop sells today
+  // (from the daily shop read), null otherwise.
+  _shopUrlFor(spool) {
+    if (spool.vendor !== "Bambu Lab" || !spool.bambu_color_code) return null;
+    const code = String(spool.bambu_color_code);
+    const entry = (this._shop?.colors || []).find((e) => e.code === code
+      && (!e.filament_id || !spool.filament_id || e.filament_id === spool.filament_id));
+    return entry && safeUrl(entry.url) ? entry.url : null;
   }
 
   // Keeps an open details dialog current: new values after a sync or an

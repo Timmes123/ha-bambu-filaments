@@ -193,7 +193,7 @@ Everything is configurable in the visual editor.
 | `show_note` | `false` | Spool note |
 | `show_type` | `false` | `RFID` / `manual` badge; stacks show the mix |
 | `show_edit` | `true` | Cog icon per row (edit, delete) |
-| `show_details` | `true` | Tapping a spool row opens a details dialog with a remaining-weight history chart (stacks still expand; expanded spools open it). With `show_edit` it also offers quick actions: enter the weighed remaining grams, or mark the spool as full |
+| `show_details` | `true` | Tapping a spool row opens a details dialog with a remaining-weight history chart (stacks still expand; expanded spools open it). With `show_edit` it also offers quick actions: enter the weighed remaining grams, or mark the spool as full. Bambu colors the shop sells today get a link to their shop page (needs the shop comparison option); a click next to the dialog closes it |
 | `details_days` | `30` | Days shown in the history chart (daily means from HA's long-term statistics) |
 | `show_add` | `true` | "Add spool" button below the list and a + in the header |
 | `compact` | `false` | Slimmer rows without the meta line |
