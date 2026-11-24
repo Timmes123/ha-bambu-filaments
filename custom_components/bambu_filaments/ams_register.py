@@ -19,7 +19,7 @@ state machine, so the feature is inert without the printer integration.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import re
 from typing import Any
@@ -133,10 +133,30 @@ class MountedTray:
     ams_id: int
     slot_id: str
     active: bool = False
+    # All colors of the spool (multi-color spools carry several); the tray
+    # sensor's `cols` attribute, falling back to the single `color`.
+    colors: list[str] = field(default_factory=list)
 
     @property
     def location(self) -> str:
         return f"{self.printer_name} {self.ams_model or 'AMS'} slot {int(self.slot_id) + 1}"
+
+    @property
+    def all_colors(self) -> list[str]:
+        return self.colors or ([self.color] if self.color else [])
+
+
+def official_tray_code(tray: MountedTray, colordb: BambuColorDB) -> str | None:
+    """Bambu's tray color code ("R0") when filament id + colors match the
+    color database exactly, else None.
+
+    The printer integration does not pass on the tray code from the RFID
+    tag, so this exact match is the only way to know which official color a
+    tray holds. Auto-register only creates spools it can identify this way.
+    """
+    if not tray.filament_id or not tray.all_colors:
+        return None
+    return colordb.tray_code(tray.filament_id, tray.all_colors)
 
 
 def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
@@ -175,6 +195,8 @@ def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
             remain = int(attrs.get("remain", -1))
         except (TypeError, ValueError):
             remain = -1
+        cols = attrs.get("cols")
+        colors = [str(c) for c in cols if c] if isinstance(cols, (list, tuple)) else []
         trays.append(
             MountedTray(
                 entity_id=entry.entity_id,
@@ -192,6 +214,7 @@ def scan_mounted_rfid_trays(hass: HomeAssistant) -> list[MountedTray]:
                 ams_id=ams_id,
                 slot_id=slot_id,
                 active=bool(attrs.get("active")),
+                colors=colors,
             )
         )
     return trays
@@ -282,6 +305,7 @@ def build_ams_sync_item(
     net = total if tray.remain < 0 else max(0, min(total, round(total * tray.remain / 100)))
     color8 = normalize_hex(tray.color)
     color6 = color8[:7] or "#FFFFFF"
+    colors8 = [h for h in (normalize_hex(c) for c in tray.all_colors) if h]
     item: dict[str, Any] = {
         "RFID": tray.tray_uuid,
         "createType": "ams",
@@ -292,7 +316,7 @@ def build_ams_sync_item(
         "isSupport": "support" in name.lower() or material.upper().endswith("-S"),
         "color": color6,
         "colorType": 2,
-        "colors": [color8 or color6],
+        "colors": colors8 or [color8 or color6],
         "rolls": 1,
         "netWeight": net,
         "totalNetWeight": total,
@@ -304,7 +328,7 @@ def build_ams_sync_item(
     }
     # Studio derives trayIdName as "<filamentId minus GF prefix>-<color code>"
     # from the official color database (e.g. GFG00 + dark green -> "G00-G01").
-    tray_code = colordb.tray_code(tray.filament_id, [tray.color]) if tray.color else None
+    tray_code = official_tray_code(tray, colordb)
     if tray_code and len(tray.filament_id) > 2:
         item["trayIdName"] = f"{tray.filament_id[2:]}-{tray_code}"
     return item

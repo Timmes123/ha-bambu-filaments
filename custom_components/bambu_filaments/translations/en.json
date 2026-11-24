@@ -48,7 +48,7 @@
         },
         "data_description": {
           "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates.",
-          "auto_register_ams": "When an official RFID spool sits in an AMS slot but is missing from the cloud library, it is added automatically - no need to open the Bambu app or Studio first. Uses the AMS slot sensors of the Bambu Lab printer integration.",
+          "auto_register_ams": "When an official RFID spool sits in an AMS slot but is missing from the cloud library, it is added automatically - no need to open the Bambu app or Studio first. Uses the AMS slot sensors of the Bambu Lab printer integration. Spools whose color cannot be matched exactly to the official color database are left to the Bambu app or Studio.",
           "auto_register_ams_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
           "sync_ams_remaining": "Pushes the AMS remaining-weight estimate of official RFID spools to the library whenever it changes - like Studio does, but without Studio running. A spool reading 0 % is booked as empty immediately. Uses the Bambu Lab printer integration.",
           "sync_ams_remaining_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
@@ -100,7 +100,7 @@
         },
         "data_description": {
           "auto_dedup_manual": "When the AMS registers a new official spool, one matching full, manually created spool is deleted from the cloud library - pre-entered stock no longer turns into duplicates.",
-          "auto_register_ams": "When an official RFID spool sits in an AMS slot but is missing from the cloud library, it is added automatically - no need to open the Bambu app or Studio first. Uses the AMS slot sensors of the Bambu Lab printer integration.",
+          "auto_register_ams": "When an official RFID spool sits in an AMS slot but is missing from the cloud library, it is added automatically - no need to open the Bambu app or Studio first. Uses the AMS slot sensors of the Bambu Lab printer integration. Spools whose color cannot be matched exactly to the official color database are left to the Bambu app or Studio.",
           "auto_register_ams_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",
           "sync_ams_remaining": "Pushes the AMS remaining-weight estimate of official RFID spools to the library whenever it changes - like Studio does, but without Studio running. A spool reading 0 % is booked as empty immediately. Uses the Bambu Lab printer integration.",
           "sync_ams_remaining_unavailable": "Requires the Bambu Lab printer integration (ha-bambulab), which is not installed or not loaded: {bambulab_url}",

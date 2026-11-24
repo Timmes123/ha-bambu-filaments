@@ -23,7 +23,7 @@ Unofficial, reverse-engineered cloud API — not affiliated with Bambu Lab, may 
 - **One device per spool** with remaining % and grams, official color name, mount location and a delete button; aggregate sensors for spool count and total remaining.
 - **Dashboard card** in the look of Studio's Filament Manager: grouping, sorting, ×n stacks for identical spools, filters, RFID/manual badges, add and edit dialogs — third-party brands and multi-spool stock included.
 - **Actions** to create, update, delete and refresh spools; catalog lookup.
-- **AMS bridge** (optional, needs ha-bambulab): auto-register loaded spools, sync AMS remaining weights, book runouts.
+- **AMS bridge** (optional, needs ha-bambulab): auto-register loaded spools (only when the color matches the official database exactly), sync AMS remaining weights, book runouts.
 - **Stock tracking**: pre-register sealed spools, auto-remove the manual entry when the real spool hits the AMS, deduct print usage from third-party spools.
 - **Missing colors**: which colors of the *current* Bambu shop range you don't have yet, per product line — handy when ordering.
 - **Share page**: a read-only link for friends showing which colors you have in stock, no Home Assistant login needed.

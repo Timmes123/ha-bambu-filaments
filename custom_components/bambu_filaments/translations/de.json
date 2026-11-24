@@ -48,7 +48,7 @@
         },
         "data_description": {
           "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat.",
-          "auto_register_ams": "Liegt eine Original-RFID-Spule in einem AMS-Slot, fehlt aber in der Cloud-Bibliothek, wird sie automatisch angelegt - ohne vorher die Bambu-App oder Studio zu öffnen. Nutzt die AMS-Slot-Sensoren der Bambu-Lab-Drucker-Integration.",
+          "auto_register_ams": "Liegt eine Original-RFID-Spule in einem AMS-Slot, fehlt aber in der Cloud-Bibliothek, wird sie automatisch angelegt - ohne vorher die Bambu-App oder Studio zu öffnen. Nutzt die AMS-Slot-Sensoren der Bambu-Lab-Drucker-Integration. Spulen, deren Farbe sich nicht eindeutig der offiziellen Farbdatenbank zuordnen lässt, überlässt sie der Bambu-App oder Studio.",
           "auto_register_ams_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
           "sync_ams_remaining": "Überträgt die AMS-Restmengenschätzung von Original-RFID-Spulen bei jeder Änderung in die Bibliothek - wie Studio, nur ohne laufendes Studio. Meldet das AMS 0 %, wird die Spule sofort als leer gebucht. Nutzt die Bambu-Lab-Drucker-Integration.",
           "sync_ams_remaining_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
@@ -100,7 +100,7 @@
         },
         "data_description": {
           "auto_dedup_manual": "Registriert das AMS eine neue Original-Spule, wird eine passende volle, manuell angelegte Spule aus der Cloud-Bibliothek gelöscht - vorerfasster Bestand wird so nicht zum Duplikat.",
-          "auto_register_ams": "Liegt eine Original-RFID-Spule in einem AMS-Slot, fehlt aber in der Cloud-Bibliothek, wird sie automatisch angelegt - ohne vorher die Bambu-App oder Studio zu öffnen. Nutzt die AMS-Slot-Sensoren der Bambu-Lab-Drucker-Integration.",
+          "auto_register_ams": "Liegt eine Original-RFID-Spule in einem AMS-Slot, fehlt aber in der Cloud-Bibliothek, wird sie automatisch angelegt - ohne vorher die Bambu-App oder Studio zu öffnen. Nutzt die AMS-Slot-Sensoren der Bambu-Lab-Drucker-Integration. Spulen, deren Farbe sich nicht eindeutig der offiziellen Farbdatenbank zuordnen lässt, überlässt sie der Bambu-App oder Studio.",
           "auto_register_ams_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",
           "sync_ams_remaining": "Überträgt die AMS-Restmengenschätzung von Original-RFID-Spulen bei jeder Änderung in die Bibliothek - wie Studio, nur ohne laufendes Studio. Meldet das AMS 0 %, wird die Spule sofort als leer gebucht. Nutzt die Bambu-Lab-Drucker-Integration.",
           "sync_ams_remaining_unavailable": "Benötigt die Bambu-Lab-Drucker-Integration (ha-bambulab), die nicht installiert oder nicht geladen ist: {bambulab_url}",

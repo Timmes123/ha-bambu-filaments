@@ -21,6 +21,7 @@ from .ams_register import (
     TraySlot,
     bambulab_available,
     build_ams_sync_item,
+    official_tray_code,
     printer_busy,
     printer_progress,
     printer_running,
@@ -121,6 +122,7 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
         # still mounted (never re-create those until the spool is removed).
         self._registered_uuids: set[str] = set()
         self._skip_uuids: set[str] = set()
+        self._uncertain_uuids: set[str] = set()
         self._mounted_known: set[str] = set()
         # Remaining-weight sync: last pushed (net, monotonic time) per uuid,
         # last seen AMS percent per uuid (for the empty-on-removal rule).
@@ -771,6 +773,26 @@ class BambuFilamentsCoordinator(DataUpdateCoordinator[dict[int, dict[str, Any]]]
             and t.tray_uuid not in self._skip_uuids
             and t.tray_uuid not in self._registered_uuids
         ]
+        # Only spools whose official color is certain: the printer
+        # integration does not pass on the tag's tray code, and some tags
+        # carry a hex that differs from the color database (PLA Wood
+        # Rosewood). Such a spool is left to Bambu Handy / Studio, which read
+        # the tray code from the printer.
+        self._uncertain_uuids &= mounted - known
+        certain = []
+        for tray in missing:
+            if official_tray_code(tray, self.colordb):
+                certain.append(tray)
+            elif tray.tray_uuid not in self._uncertain_uuids:
+                self._uncertain_uuids.add(tray.tray_uuid)
+                _LOGGER.info(
+                    "Auto-register: %s %s in %s is not in the official color database "
+                    "(filament %s, colors %s) - not added; Bambu Handy or Studio will "
+                    "add it with the exact color",
+                    tray.tray_name, tray.color, tray.location, tray.filament_id,
+                    ", ".join(tray.all_colors),
+                )
+        missing = certain
         if not missing:
             return data
         try:
