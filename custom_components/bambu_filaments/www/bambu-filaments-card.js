@@ -6,7 +6,7 @@
 // Must match "version" in manifest.json (enforced by CI). The backend sends
 // its version in the spools sensor attributes; a mismatch means this browser
 // tab still runs a cached copy of the card from before an update.
-const CARD_VERSION = "2.4.7";
+const CARD_VERSION = "2.4.8";
 
 // HA's frontend service worker matches its cache entries without the query
 // string, so the ?v=<version> bump on the Lovelace resource does not defeat it
@@ -1169,9 +1169,16 @@ class BambuFilamentsCard extends HTMLElement {
       ["ID", String(spool.spool_id)],
     ].filter(([, v]) => v);
     const shopUrl = this._shopUrlFor(spool);
-    root.querySelector(".xinfo").innerHTML = rows
+    const info = rows
       .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")
       + (shopUrl ? `<dt>${esc(t.x_shop)}</dt><dd><a href="${esc(shopUrl)}" target="_blank" rel="noopener noreferrer">${esc(t.x_shop_open)}</a></dd>` : "");
+    // This runs on every hass update (many per second). Rewriting the rows
+    // each time replaced the shop link between press and release, so the
+    // click got lost - only write when something changed.
+    if (d.info !== info) {
+      d.info = info;
+      root.querySelector(".xinfo").innerHTML = info;
+    }
   }
 
   // Shop page of a Bambu spool's color - only colors the shop sells today
